@@ -116,7 +116,7 @@ def run_bpb_comparison():
         p1 = results[PHASE1_TAG][seq_len]
         p2 = results[PHASE2_TAG][seq_len]
         delta = p1 - p2
-        print(f"{seq_len:>{col_w}}{p1:>{col_w}.4f}{p2:>{col_w}.4f}{delta:>{col_w}+.4f}")
+        print(f"{seq_len:>{col_w}}{p1:>{col_w}.4f}{p2:>{col_w}.4f}{delta:>+{col_w}.4f}")
     print()
     print("delta > 0 means phase 1 is worse (context extension helps)")
 
