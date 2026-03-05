@@ -30,7 +30,7 @@ Notes
 import os
 import subprocess
 import modal
-from modal import App, Image as ModalImage, Volume, Secret
+from modal import Image as ModalImage, Volume, Secret
 
 # =============================================================================
 # CONFIGURATION
