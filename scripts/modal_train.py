@@ -717,6 +717,99 @@ def stage_eval_extended_context() -> None:
 
 
 # =============================================================================
+# STAGE A3-PART2: SEQ-LEN ABLATIONS (YaRN vs Baseline at 512/1024/2048/4096)
+# =============================================================================
+
+@app.function(
+    image=image,
+    secrets=[secret],
+    volumes={VOLUME_MOUNT: volume},
+    gpu="A10G:4",
+    timeout=60 * 60 * 20,   # up to 20 h for 8 sequential runs
+)
+def stage_seqlen_ablations(wandb_project: str = "nanochat-seqlen") -> None:
+    """
+    Train 8 picochat models: {baseline, yarn} × {512, 1024, 2048, 4096} seq_lens.
+
+    This is the *correct* YaRN vs baseline comparison:
+      - At each seq_len the attention window is full causal (window_pattern=L
+        with max-seq-len = seq_len), so RoPE positions are genuinely used.
+      - Without this, sliding-window attention at inference keeps positions
+        in-distribution and masks any benefit/cost of YaRN's frequency scaling.
+
+    Device batch size is reduced at longer seq_lens to stay within A10G 24 GB:
+      512  → dbs=32   1024 → dbs=16   2048 → dbs=8   4096 → dbs=4
+
+    Total tokens per run is constant: 5000 × 65 536 ≈ 328 M tokens.
+
+    Invoke with:
+        modal run scripts/modal_train.py::stage_seqlen_ablations
+    """
+    _setup_cache()
+
+    SEQ_CONFIGS = [
+        (512,  32),
+        (1024, 16),
+        (2048,  8),
+        (4096,  4),
+    ]
+
+    for seq_len, dbs in SEQ_CONFIGS:
+        for variant_suffix, extra in [
+            ("baseline", []),
+            ("yarn",     ["--yarn-alpha=4.0"]),
+        ]:
+            tag = f"seqlen{seq_len}-{variant_suffix}"
+            print(f"\n=== Training {tag} ===")
+            _torchrun(
+                "scripts.base_train",
+                [
+                    "--depth=6", "--head-dim=64",
+                    f"--max-seq-len={seq_len}",
+                    "--window-pattern=L",
+                    f"--device-batch-size={dbs}",
+                    "--total-batch-size=65536",
+                    "--num-iterations=5000",
+                    "--eval-every=100",
+                    "--core-metric-every=-1",
+                    "--sample-every=-1",
+                    "--save-every=5000",    # save only at the end
+                    f"--run={tag}",
+                    f"--model-tag={tag}",
+                ] + extra,
+                nproc=4,
+            )
+    volume.commit()
+
+
+# =============================================================================
+# STAGE A3-PART2: EVAL SEQ-LEN ABLATIONS
+# =============================================================================
+
+@app.function(
+    image=image,
+    secrets=[secret],
+    volumes={VOLUME_MOUNT: volume},
+    gpu="A10G:1",
+    timeout=60 * 60 * 2,
+)
+def stage_eval_seqlen_ablations() -> None:
+    """
+    Load the 8 seqlen-ablation checkpoints and print a BPB comparison table.
+
+    Each model is evaluated at its own training seq_len so the comparison is
+    apples-to-apples: same context width, different RoPE scaling strategy.
+
+    Invoke with:
+        modal run scripts/modal_train.py::stage_eval_seqlen_ablations
+    """
+    import os as _os
+    _os.environ["EXPERIMENT"] = "seqlen"
+    _setup_cache()
+    _python("assignments.eval_extended_context")
+
+
+# =============================================================================
 # QUICK TEST
 # =============================================================================
 
