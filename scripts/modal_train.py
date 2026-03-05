@@ -127,8 +127,10 @@ image = (
     # System dependencies
     .apt_install("git", "build-essential", "curl", "wget", "unzip")
 
-    # Copy nanochat repo into the image
-    .add_local_dir(local_path="./nanochat", remote_path="/root/nanochat", copy=True)
+    # Copy nanochat repo into the image (use repo root so pyproject.toml is included)
+    # Exclude .venv: local venv binaries are macOS/ARM64 and won't run on Linux containers
+    .add_local_dir(local_path=".", remote_path="/root/nanochat", copy=True,
+                   ignore=[".venv", "**/__pycache__", "**/*.pyc"])
     .workdir("/root/nanochat")
 
     # Install Rust and uv
@@ -636,6 +638,82 @@ def main() -> None:
     print("  Checkpoints + report are in the 'nanochat-vol' Modal Volume.")
     print("  Optional RL stage: modal run nanochat_modal.py::stage_rl")
     print("=" * w + "\n")
+
+
+# =============================================================================
+# STAGE A3-PART2: PICOCHAT ABLATIONS
+# =============================================================================
+
+@app.function(
+    image=image,
+    secrets=[secret],
+    volumes={VOLUME_MOUNT: volume},
+    gpu="A10G:4",
+    timeout=60 * 60 * 3,
+)
+def stage_picoablations(wandb_project: str = "nanochat-ablations") -> None:
+    """
+    Run three picochat ablation experiments sequentially: baseline, swiglu, yarn.
+
+    Picochat config: depth=6, head-dim=64, seq_len=512, ~30M params
+    - pico-baseline: standard relu2 MLP
+    - pico-swiglu:   SwiGLU FFN (same param budget via ffn_dim = 8/3 * n_embd)
+    - pico-yarn:     YaRN NTK-aware RoPE scaling (alpha=4.0)
+
+    Each run: 5000 steps, total-batch-size=65536 => ~320M tokens
+    Estimated cost: <$2/run on A10G:4, ~$6 total for all three.
+
+    Invoke with:
+        modal run scripts/modal_train.py::stage_picoablations
+    """
+    _setup_cache()
+    PICO_ARGS = [
+        "--depth=6", "--head-dim=64", "--max-seq-len=512",
+        "--window-pattern=L", "--device-batch-size=32",
+        "--total-batch-size=65536", "--num-iterations=5000",
+        "--eval-every=100", "--core-metric-every=-1", "--sample-every=-1",
+        "--save-every=1000",
+    ]
+    for variant, extra in [
+        ("pico-baseline", []),
+        ("pico-swiglu",   ["--mlp-type=swiglu"]),
+        ("pico-yarn",     ["--yarn-alpha=4.0"]),
+    ]:
+        print(f"\n=== Training {variant} ===")
+        _torchrun(
+            "scripts.base_train",
+            PICO_ARGS + [
+                f"--run={variant}",
+                f"--model-tag={variant}",
+            ] + extra,
+            nproc=4,
+        )
+    volume.commit()
+
+
+# =============================================================================
+# STAGE A3-PART2: EXTENDED CONTEXT EVAL
+# =============================================================================
+
+@app.function(
+    image=image,
+    secrets=[secret],
+    volumes={VOLUME_MOUNT: volume},
+    gpu="A10G:1",
+    timeout=60 * 30,
+)
+def stage_eval_extended_context() -> None:
+    """
+    Evaluate pico-baseline vs pico-yarn at seq_len = 512, 1024, 2048.
+
+    Checkpoints must already exist on the volume (run stage_picoablations first).
+    Runs assignments/eval_extended_context.py on a single A10G.
+
+    Invoke with:
+        modal run scripts/modal_train.py::stage_eval_extended_context
+    """
+    _setup_cache()
+    _python("assignments.eval_extended_context")
 
 
 # =============================================================================

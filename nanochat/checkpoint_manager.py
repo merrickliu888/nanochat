@@ -26,6 +26,12 @@ def _patch_missing_config_keys(model_config_kwargs):
     if "window_pattern" not in model_config_kwargs:
         model_config_kwargs["window_pattern"] = "L"
         log0(f"Patching missing window_pattern in model config to 'L'")
+    if "mlp_type" not in model_config_kwargs:
+        model_config_kwargs["mlp_type"] = "relu2"
+        log0(f"Patching missing mlp_type in model config to 'relu2'")
+    if "yarn_alpha" not in model_config_kwargs:
+        model_config_kwargs["yarn_alpha"] = 1.0
+        log0(f"Patching missing yarn_alpha in model config to 1.0")
 
 def _patch_missing_keys(model_data, model_config):
     """Add default values for new parameters that may be missing in old checkpoints."""

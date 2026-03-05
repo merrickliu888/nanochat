@@ -37,6 +37,8 @@ class GPTConfig:
     # Characters: L=long (full context), S=short (half context)
     # Examples: "L"=all full context, "SL"=alternating, "SSL"=two short then one long
     window_pattern: str = "SSSL"
+    mlp_type: str = "relu2"   # "relu2" or "swiglu"
+    yarn_alpha: float = 1.0   # >1.0 enables YaRN NTK-aware RoPE scaling
 
 
 def norm(x):
@@ -127,14 +129,21 @@ class CausalSelfAttention(nn.Module):
 class MLP(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.c_fc = Linear(config.n_embd, 4 * config.n_embd, bias=False)
-        self.c_proj = Linear(4 * config.n_embd, config.n_embd, bias=False)
+        self.mlp_type = config.mlp_type
+        if config.mlp_type == "swiglu":
+            # ffn_dim = 8/3 * n_embd preserves param count vs 4x relu2 (two matmuls each)
+            ffn_dim = int(config.n_embd * 8 / 3)
+            self.c_gate = Linear(config.n_embd, ffn_dim, bias=False)
+            self.c_fc   = Linear(config.n_embd, ffn_dim, bias=False)
+            self.c_proj = Linear(ffn_dim, config.n_embd, bias=False)
+        else:
+            self.c_fc   = Linear(config.n_embd, 4 * config.n_embd, bias=False)
+            self.c_proj = Linear(4 * config.n_embd, config.n_embd, bias=False)
 
     def forward(self, x):
-        x = self.c_fc(x)
-        x = F.relu(x).square()
-        x = self.c_proj(x)
-        return x
+        if self.mlp_type == "swiglu":
+            return self.c_proj(F.silu(self.c_gate(x)) * self.c_fc(x))
+        return self.c_proj(F.relu(self.c_fc(x)).square())
 
 
 class Block(nn.Module):
@@ -221,6 +230,8 @@ class GPT(nn.Module):
             torch.nn.init.zeros_(block.attn.c_proj.weight) # projections are zero
             torch.nn.init.uniform_(block.mlp.c_fc.weight, -s, s)
             torch.nn.init.zeros_(block.mlp.c_proj.weight)
+            if hasattr(block.mlp, 'c_gate'):
+                torch.nn.init.uniform_(block.mlp.c_gate.weight, -s, s)
 
         # Per-layer scalars
         self.resid_lambdas.fill_(1.0)   # 1.0 => typical residual connections at init
@@ -253,6 +264,12 @@ class GPT(nn.Module):
         # autodetect the device from model embeddings
         if device is None:
             device = self.transformer.wte.weight.device
+        # YaRN: NTK-aware RoPE scaling — scale base theta by alpha^(head_dim/(head_dim-2))
+        # This shifts the effective frequency range, extending the context without retraining.
+        # Ref: https://arxiv.org/abs/2309.00071 (YaRN paper)
+        yarn_alpha = self.config.yarn_alpha
+        if yarn_alpha > 1.0:
+            base = base * (yarn_alpha ** (head_dim / (head_dim - 2)))
         # stride the channels
         channel_range = torch.arange(0, head_dim, 2, dtype=torch.float32, device=device)
         inv_freq = 1.0 / (base ** (channel_range / head_dim))

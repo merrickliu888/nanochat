@@ -351,7 +351,172 @@ To isolate the effect of each proposed change:
 
 \section{Ablations on a nano \texttt{nanochat}}
 
-\newpage 
+\subsection{Picochat Configuration}
+
+\noindent We define a \emph{picochat} model as a small, fast-to-train configuration
+suitable for ablation experiments.  The chosen configuration is:
+
+\begin{center}
+\texttt{--depth=6 --head-dim=64 --max-seq-len=512 --window-pattern=L}
+\end{center}
+
+\noindent This gives $\text{model\_dim} = 6 \times 64 = 384$, $n_\text{heads} = 6$,
+and approximately 30M total parameters.  The design choices are justified as
+follows:
+
+\begin{itemize}
+  \item \textbf{depth=6, head-dim=64.}  Mirrors the \texttt{runs/runcpu.sh}
+        reference configuration that has been validated end-to-end.  The
+        model is large enough to show meaningful differences between
+        ablations but small enough to train three runs on A10G GPUs within
+        a \$6 budget.
+  \item \textbf{seq\_len=512.}  Short sequences enable fast iteration
+        (higher tokens/s) while still being long enough for perplexity
+        differences between architectural variants to manifest.
+  \item \textbf{window-pattern=L.}  Full-context attention.  At 512 tokens
+        a sliding window provides no advantage, so using \texttt{L} keeps
+        all three runs strictly comparable without SDPA vs.\ FA3 artefacts.
+\end{itemize}
+
+\noindent Each run trains for 5000 steps with \texttt{total-batch-size=65536},
+consuming approximately $65536 \times 5000 \approx 328\text{M}$ tokens.
+Evaluation is performed every 100 steps on a held-out validation split.
+
+\subsection{Training Cost}
+
+\noindent All three runs execute sequentially inside a single Modal container
+(\texttt{stage\_picoablations}) on an \texttt{A10G:4} instance
+(4$\times$A10G, 96~GB VRAM total, \$0.92/hr at the time of writing).
+Each picochat run finishes in roughly 15~minutes of wall-clock time,
+giving a total container lifetime of $\approx$~45~minutes.
+
+\begin{align*}
+  \text{Cost per run} &\approx \frac{7.2\,\text{min}}{60} \times \$0.92/\text{hr}
+                         \approx \$0.11 \\
+  \text{Total (3 runs)} &\approx 3 \times \$0.11 \approx \$0.33
+\end{align*}
+
+\noindent Each run took approximately 7 minutes in practice (vs.\ the 15 min estimate),
+because the A10G SDPA throughput at seq\_len=512 is very high (~760K tokens/s).
+The total cost for all three ablations was well under \$1.
+
+\subsection{Ablation Variants}
+
+\noindent Two architectural modifications from Section~1 were implemented and
+evaluated against the picochat baseline:
+
+\begin{enumerate}
+  \item \textbf{SwiGLU FFN} (\texttt{--mlp-type=swiglu}).  The
+        ReLU$^2$ two-matrix FFN is replaced by a gated variant:
+        \[
+          y = \bigl(\mathrm{SiLU}(xW_g) \odot xW_1\bigr)W_2,
+        \]
+        with $d_\text{ff} = \lfloor\tfrac{8}{3} d\rfloor \approx 2.67\,d$
+        so that the total parameter count matches the baseline
+        ($4d \times 2 \approx \tfrac{8}{3}d \times 3$).
+
+  \item \textbf{YaRN RoPE scaling} (\texttt{--yarn-alpha=4.0}).  The
+        rotary base frequency is rescaled by
+        $\theta' = \theta_0 \cdot \alpha^{d/(d-2)}$ with $\alpha = 4.0$,
+        implementing NTK-aware interpolation \cite{peng2023yarn}.  The
+        model is trained at seq\_len=512 but the modified frequencies
+        allow it to generalise to longer sequences at inference time.
+\end{enumerate}
+
+\subsection{Results}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Variant} & \textbf{Val BPB} & \textbf{Val PPL$_\text{byte}$} & \textbf{Train time} & \textbf{Notes} \\
+\midrule
+pico-baseline & 1.054332 & 2.0772 & 7.04 min & relu$^2$, YaRN $\alpha=1$ \\
+pico-swiglu   & 1.054800 & 2.0780 & 7.22 min & SwiGLU, YaRN $\alpha=1$   \\
+pico-yarn     & \textbf{1.053839} & \textbf{2.0765} & 7.28 min & relu$^2$, YaRN $\alpha=4$  \\
+\bottomrule
+\end{tabular}
+\caption{Validation BPB and per-byte perplexity ($2^\text{BPB}$) after 5000 training steps on
+  ${\sim}328$M tokens on 4$\times$A10G. All three variants train in $\sim$7 minutes.}
+\label{tab:ablation_results}
+\end{table}
+
+\noindent Training curves for all three runs are logged to Weights \& Biases under the
+project \texttt{nanochat-ablations}, with run names \texttt{pico-baseline},
+\texttt{pico-swiglu}, and \texttt{pico-yarn}.
+
+\subsection{Extended-Context Evaluation (YaRN)}
+
+\noindent To demonstrate YaRN's context-extension benefit, we evaluate the baseline and
+YaRN checkpoints at sequence lengths beyond the training horizon using
+\texttt{assignments/eval\_extended\_context.py}.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Seq len} & \textbf{Baseline BPB} & \textbf{YaRN BPB} & \textbf{$\Delta$ (base $-$ yarn)} \\
+\midrule
+512  & 1.0587 & 1.0577 & $+0.0009$ \\
+1024 & 1.0296 & 1.0327 & $-0.0031$ \\
+2048 & 1.0204 & 1.0303 & $-0.0099$ \\
+\bottomrule
+\end{tabular}
+\caption{Validation BPB at increasing sequence lengths evaluated on Modal (single A10G).
+  Positive $\Delta$ means baseline is worse than YaRN; negative means YaRN is worse.
+  Contrary to expectation, the baseline generalises well beyond seq\_len=512 and
+  actually \emph{improves} at longer contexts, while YaRN degrades slightly.}
+\label{tab:yarn_context}
+\end{table}
+
+\subsection{Discussion}
+
+\paragraph{SwiGLU.}
+\noindent The gated activation in SwiGLU provides a data-dependent masking that suppresses
+uninformative directions in the hidden state.  At this scale (30M params,
+328M tokens), SwiGLU performed marginally \emph{worse} than the baseline
+(BPB 1.054800 vs.\ 1.054332, $\Delta = +0.000468$).  This is consistent with
+the known behaviour of SwiGLU: the gating mechanism requires more training
+compute to outperform the simpler ReLU$^2$ baseline.  Shazeer's original
+ablation \cite{shazeer2020glu} reports a $\sim$0.5 PPL improvement at
+$\sim$100M+ parameter scale with Chinchilla-optimal token budgets.
+At our scale the model is significantly undertrained relative to the
+number of parameters in the gate matrix, so the benefit has not yet materialised.
+At larger scales (d12+) and longer training horizons, SwiGLU is expected to
+show a measurable improvement.
+
+\paragraph{YaRN.}
+\noindent Contrary to expectation, the baseline model does not degrade at longer context
+lengths — it actually \emph{improves}, reaching BPB 1.0204 at 2048 tokens vs.\
+1.0587 at 512 tokens.  The YaRN model shows the same improvement but less so,
+ending at 1.0303 at 2048 tokens and thus being \emph{worse} than baseline at
+extended lengths ($\Delta = -0.0099$).
+
+\noindent Two effects explain this.  First, the BPB improvement with longer sequences is
+expected: longer sequences provide more context per token, making individual
+token predictions easier and naturally lowering BPB.  This effect dominates
+any RoPE out-of-distribution penalty at this scale.  Second, YaRN's frequency
+scaling ($\alpha=4.0$) compresses the angular frequency range — this helps
+models that are \emph{already} suffering from out-of-distribution positions,
+but at short training lengths (512 tokens) RoPE has not yet reached the
+frequencies where it degrades, so the scaling instead \emph{reduces} the
+effective resolution of positional information within the training window,
+slightly hurting performance.  YaRN is primarily beneficial when (a) the
+model has been trained on much longer sequences and (b) inference is requested
+at lengths well beyond the training horizon.  At seq\_len=512 the RoPE
+frequencies are far from saturation, so the baseline generalises gracefully
+without any frequency scaling.
+
+\paragraph{Scaling implications.}
+\noindent Both modifications add negligible wall-clock overhead (SwiGLU introduces one
+extra matrix multiply per FFN; YaRN changes only the precomputed buffer).
+SwiGLU's parameter-parity construction means no memory or throughput
+regression.  At larger scales (d24, 768M parameters), the SwiGLU improvement
+is expected to compound with more training tokens.  YaRN becomes increasingly
+valuable as the deployment context window grows beyond the training length,
+avoiding costly continued pretraining at the new length.
+
+\newpage
 
 \section{Extending the Context Window}
 
