@@ -77,6 +77,8 @@
 }
 
 \usepackage{changepage}
+\setlength{\parindent}{0pt}
+
 \newenvironment{restoretext}%
     {
      \begin{adjustwidth}{}{\leftmargin}%
@@ -455,7 +457,7 @@ the checkpoint, position IDs at inference always stay in $[0, 511]$ regardless
 of the input sequence length.  Standard RoPE is therefore never evaluated
 at out-of-distribution frequencies, and YaRN's NTK-aware rescaling has
 nothing to correct.  The two models are expected to produce essentially
-identical BPB at all eval lengths.  We verify this with
+identical BPB at all eval lengths.  We verify this with \\
 \texttt{assignments/eval\_extended\_context.py} on Modal (single A10G):
 
 \begin{table}[H]
@@ -505,21 +507,21 @@ training distribution, and YaRN's NTK-aware base rescaling
 ($\theta' = \theta_0 \cdot \alpha^{d/(d-2)}$, $\alpha=4.0$) has no
 out-of-distribution positions to correct.  In fact, YaRN's frequency
 compression slightly \emph{reduces} positional resolution within the
-in-distribution window, explaining the small negative $\Delta$ at 2048 tokens.
+in-distribution window, explaining the small negative $\Delta$ at 2048 tokens. \\
 
-\noindent Both models improve as eval length grows (BPB drops from $\sim$1.059 at 512
+Both models improve as eval length grows (BPB drops from $\sim$1.059 at 512
 to $\sim$1.021 at 2048) because longer batches provide richer local context
 within the sliding window — a natural benefit of more tokens per step, not
-extrapolation.
+extrapolation. \\
 
-\noindent YaRN's benefit would materialise only if the model used global causal
+YaRN's benefit would materialise only if the model used global causal
 attention (window size $= -1$ in FA3) \emph{and} inference ran beyond the
 training length.  The sliding-window architecture inadvertently sidesteps
 the RoPE extrapolation problem entirely, making YaRN redundant at this
 configuration.
 
 \paragraph{Scaling implications.}
-\noindent Both modifications add negligible wall-clock overhead (SwiGLU introduces one
+Both modifications add negligible wall-clock overhead (SwiGLU introduces one
 extra matrix multiply per FFN; YaRN changes only the precomputed buffer).
 SwiGLU's parameter-parity construction means no memory or throughput
 regression.  At larger scales (d24, 768M parameters), the SwiGLU improvement
@@ -638,7 +640,7 @@ We test whether each model can retrieve a random 5-digit ``passkey''
 embedded at different positions within a context window filled with
 filler text.  The passkey is placed at 10\%, 50\%, and 90\% depth into
 the context.  The model is prompted to recall the passkey, and we
-measure exact-match accuracy over 20 trials per position.
+measure exact-match accuracy over 20 trials per position.\\
 
 This directly tests whether the model can attend to and retrieve
 information from arbitrary positions in its context window.  The
@@ -670,13 +672,13 @@ longer sequence lengths: 0.9911 at seq\_len=2048 vs.\ 1.0204 for Phase~1,
 a $\Delta$ of $+0.0293$.  At seq\_len=1024, Phase~2 also outperforms
 Phase~1 ($\Delta = +0.0135$).  This confirms that continued pretraining at
 the target context length teaches the model to effectively utilise longer-range
-dependencies for next-token prediction.
+dependencies for next-token prediction. \\
 
-At seq\_len=512, Phase~2 is slightly worse than Phase~1 ($\Delta = -0.0061$).
+seq\_len=512, Phase~2 is slightly worse than Phase~1 ($\Delta = -0.0061$).
 This small regression is expected: the model's attention patterns have been
 adapted to a 4$\times$ longer context, and there is a mild tradeoff between
 short- and long-context quality.  The magnitude of the regression ($<$0.6\%
-relative) is negligible compared to the long-context gains.
+relative) is negligible compared to the long-context gains. \\
 
 Interestingly, even Phase~1 (trained only at 512) shows improving BPB at
 longer evaluation lengths (1.0587 $\rightarrow$ 1.0296 $\rightarrow$ 1.0204).
