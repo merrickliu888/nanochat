@@ -810,6 +810,73 @@ def stage_eval_seqlen_ablations() -> None:
 
 
 # =============================================================================
+# STAGE A3-PART3: CONTEXT EXTENSION (512 -> 2048)
+# =============================================================================
+
+@app.function(
+    image=image,
+    secrets=[secret],
+    volumes={VOLUME_MOUNT: volume},
+    gpu="A10G:4",
+    timeout=60 * 60 * 6,
+)
+def stage_context_extension(wandb_project: str = "nanochat-ablations") -> None:
+    """
+    Part 3: Continue pretraining pico-baseline (seq_len=512) at seq_len=2048.
+
+    Phase 1 checkpoint (pico-baseline) must already exist on the volume.
+    This stage loads its weights and trains at 2048 for 2500 steps (~164M tokens).
+
+    Invoke with:
+        modal run scripts/modal_train.py::stage_context_extension
+    """
+    _setup_cache()
+
+    print("\n=== Phase 2: Context Extension (512 -> 2048) ===")
+    _torchrun(
+        "scripts.base_train",
+        [
+            "--depth=6", "--head-dim=64", "--max-seq-len=2048",
+            "--window-pattern=L",
+            "--device-batch-size=8",
+            "--total-batch-size=65536",
+            "--num-iterations=2500",
+            "--eval-every=100",
+            "--core-metric-every=-1",
+            "--sample-every=-1",
+            "--save-every=2500",
+            "--init-from=pico-baseline",
+            "--run=ctx-ext-2048",
+            "--model-tag=ctx-ext-2048",
+        ],
+        nproc=4,
+    )
+    volume.commit()
+
+
+# =============================================================================
+# STAGE A3-PART3: EVAL CONTEXT EXTENSION
+# =============================================================================
+
+@app.function(
+    image=image,
+    secrets=[secret],
+    volumes={VOLUME_MOUNT: volume},
+    gpu="A10G:1",
+    timeout=60 * 60,
+)
+def stage_eval_context_extension() -> None:
+    """
+    Part 3: Evaluate pico-baseline vs ctx-ext-2048.
+
+    Invoke with:
+        modal run scripts/modal_train.py::stage_eval_context_extension
+    """
+    _setup_cache()
+    _python("assignments.eval_context_extension")
+
+
+# =============================================================================
 # QUICK TEST
 # =============================================================================
 
