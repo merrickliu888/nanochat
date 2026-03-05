@@ -446,13 +446,14 @@ pico-yarn     & \textbf{1.053839} & \textbf{2.0765} & 7.28 min & relu$^2$, YaRN 
 \label{tab:ablation_results}
 \end{table}
 
-\noindent Training curves for all three runs are logged to Weights \& Biases under the
+Training curves for all three runs are logged to Weights \& Biases under the
 project \texttt{nanochat-ablations}, with run names \texttt{pico-baseline},
-\texttt{pico-swiglu}, and \texttt{pico-yarn}.
+\texttt{pico-swiglu}, and \texttt{pico-yarn}.  See Figure~\ref{fig:train_loss} in
+the Appendix.
 
 \subsection{Extended-Context Evaluation (YaRN)}
 
-\noindent Because \texttt{window-pattern=L} bakes a 512-token sliding window into
+Because \texttt{window-pattern=L} bakes a 512-token sliding window into
 the checkpoint, position IDs at inference always stay in $[0, 511]$ regardless
 of the input sequence length.  Standard RoPE is therefore never evaluated
 at out-of-distribution frequencies, and YaRN's NTK-aware rescaling has
@@ -712,7 +713,18 @@ context extension scenario and can be combined with YaRN
 
 \section{Our Final \texttt{\texttt{nanochat}}}
 
-\newpage 
+\newpage
+
+\appendix
+\section{Training Curves}
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{images/train_loss_part2.png}
+\caption{Training loss curves for pico-baseline, pico-swiglu, and pico-yarn over
+  5000 steps.  All three runs converge to similar loss values after the initial
+  rapid decrease.}
+\label{fig:train_loss}
+\end{figure}
 
 \begin{thebibliography}{9}
 \bibitem{radford2019language} Radford, A., et al. (2019). Language models are unsupervised multitask learners. OpenAI Blog.
