@@ -29,6 +29,9 @@ def _patch_missing_config_keys(model_config_kwargs):
     if "mlp_type" not in model_config_kwargs:
         model_config_kwargs["mlp_type"] = "relu2"
         log0(f"Patching missing mlp_type in model config to 'relu2'")
+    if "tie_embeddings" not in model_config_kwargs:
+        model_config_kwargs["tie_embeddings"] = True
+        log0(f"Patching missing tie_embeddings in model config to True")
     if "yarn_alpha" not in model_config_kwargs:
         model_config_kwargs["yarn_alpha"] = 1.0
         log0(f"Patching missing yarn_alpha in model config to 1.0")

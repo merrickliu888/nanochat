@@ -53,6 +53,7 @@ parser.add_argument("--head-dim", type=int, default=128, help="target head dimen
 parser.add_argument("--max-seq-len", type=int, default=2048, help="max context length")
 parser.add_argument("--window-pattern", type=str, default="SSSL", help="sliding window pattern tiled across layers: L=full, S=half context (e.g. 'SSL')")
 parser.add_argument("--mlp-type", type=str, default="relu2", choices=["relu2", "swiglu"], help="MLP activation: relu2 or swiglu")
+parser.add_argument("--tie-embeddings", action=argparse.BooleanOptionalAction, default=True, help="tie input and output embedding weights")
 parser.add_argument("--yarn-alpha", type=float, default=1.0, help="YaRN NTK-aware RoPE scaling (1.0 = disabled, >1 = scaled)")
 # Training horizon (only one used, in order of precedence)
 parser.add_argument("--num-iterations", type=int, default=-1, help="explicit number of optimization steps (-1 = disable)")
@@ -143,6 +144,7 @@ def build_model_meta(depth):
         n_layer=depth, n_head=num_heads, n_kv_head=num_heads, n_embd=model_dim,
         window_pattern=args.window_pattern,
         mlp_type=args.mlp_type,
+        tie_embeddings=args.tie_embeddings,
         yarn_alpha=args.yarn_alpha,
     )
     with torch.device("meta"):

@@ -3,7 +3,7 @@ GPT model (rewrite, a lot simpler)
 Notable features:
 - rotary embeddings (and no positional embeddings)
 - QK norm
-- untied weights for token embedding and lm_head
+- tied weights for token embedding and lm_head
 - relu^2 activation in MLP
 - norm after token embedding
 - no learnable params in rmsnorm
@@ -38,11 +38,23 @@ class GPTConfig:
     # Examples: "L"=all full context, "SL"=alternating, "SSL"=two short then one long
     window_pattern: str = "SSSL"
     mlp_type: str = "relu2"   # "relu2" or "swiglu"
+    tie_embeddings: bool = True
     yarn_alpha: float = 1.0   # >1.0 enables YaRN NTK-aware RoPE scaling
 
 
 def norm(x):
     return F.rms_norm(x, (x.size(-1),)) # note that this will run in bf16, seems ok
+
+
+def _dedupe_parameters(params):
+    seen = set()
+    out = []
+    for param in params:
+        if id(param) in seen:
+            continue
+        seen.add(id(param))
+        out.append(param)
+    return out
 
 class Linear(nn.Linear):
     """nn.Linear that casts weights to match input dtype in forward.
@@ -180,6 +192,9 @@ class GPT(nn.Module):
             "h": nn.ModuleList([Block(config, layer_idx) for layer_idx in range(config.n_layer)]),
         })
         self.lm_head = Linear(config.n_embd, padded_vocab_size, bias=False)
+        # Optionally tie output projection to input embedding matrix
+        if config.tie_embeddings:
+            self.lm_head.weight = self.transformer.wte.weight
         # Per-layer learnable scalars (inspired by modded-nanogpt)
         # resid_lambdas: scales the residual stream at each layer (init 1.0 = neutral)
         # x0_lambdas: blends initial embedding back in at each layer (init 0.0 = disabled)
@@ -206,7 +221,7 @@ class GPT(nn.Module):
         Initialize the full model in this one function for maximum clarity.
 
         wte (embedding):     normal, std=1.0
-        lm_head:             normal, std=0.001
+        lm_head (untied):    normal, std=0.001
         for each block:
             attn.c_q:        uniform, std=1/sqrt(n_embd)
             attn.c_k:        uniform, std=1/sqrt(n_embd)
@@ -218,7 +233,8 @@ class GPT(nn.Module):
 
         # Embedding and unembedding
         torch.nn.init.normal_(self.transformer.wte.weight, mean=0.0, std=1.0)
-        torch.nn.init.normal_(self.lm_head.weight, mean=0.0, std=0.001)
+        if not self.config.tie_embeddings:
+            torch.nn.init.normal_(self.lm_head.weight, mean=0.0, std=0.001)
 
         # Transformer blocks: uniform init with bound = sqrt(3) * std (same standard deviation as normal)
         n_embd = self.config.n_embd
@@ -356,7 +372,12 @@ class GPT(nn.Module):
         # Count each group separately (mirrors the grouping in setup_optimizers)
         wte = sum(p.numel() for p in self.transformer.wte.parameters())
         value_embeds = sum(p.numel() for p in self.value_embeds.parameters())
-        lm_head = sum(p.numel() for p in self.lm_head.parameters())
+        # lm_head may be tied to wte; count only non-shared lm_head parameters to avoid double-counting
+        if self.config.tie_embeddings:
+            wte_param_ids = {id(p) for p in self.transformer.wte.parameters()}
+            lm_head = sum(p.numel() for p in self.lm_head.parameters() if id(p) not in wte_param_ids)
+        else:
+            lm_head = sum(p.numel() for p in self.lm_head.parameters())
         transformer_matrices = sum(p.numel() for p in self.transformer.h.parameters())
         scalars = self.resid_lambdas.numel() + self.x0_lambdas.numel()
         total = wte + value_embeds + lm_head + transformer_matrices + scalars
@@ -381,7 +402,15 @@ class GPT(nn.Module):
         lm_head_params = list(self.lm_head.parameters())
         resid_params = [self.resid_lambdas]
         x0_params = [self.x0_lambdas]
-        assert len(list(self.parameters())) == len(matrix_params) + len(embedding_params) + len(lm_head_params) + len(value_embeds_params) + len(resid_params) + len(x0_params)
+        embedding_params = _dedupe_parameters(embedding_params)
+        if self.config.tie_embeddings:
+            lm_head_params = [p for p in _dedupe_parameters(lm_head_params) if id(p) not in {id(p) for p in embedding_params}]
+            lm_head_lr = embedding_lr
+        else:
+            lm_head_params = _dedupe_parameters(lm_head_params)
+            lm_head_lr = unembedding_lr
+        total_grouped_params = _dedupe_parameters(matrix_params + embedding_params + lm_head_params + value_embeds_params + resid_params + x0_params)
+        assert len(list(self.parameters())) == len(total_grouped_params)
 
         # Scale the LR for the AdamW parameters by ∝1/√dmodel (tuned for 768 dim model)
         dmodel_lr_scale = (model_dim / 768) ** -0.5
@@ -389,13 +418,14 @@ class GPT(nn.Module):
 
         # Build param_groups with all required fields explicit
         param_groups = [
-            # AdamW groups (embeddings, lm_head, scalars)
-            dict(kind='adamw', params=lm_head_params, lr=unembedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
+            # AdamW groups (embeddings, optional tied/untied lm_head, value embeds, scalars)
             dict(kind='adamw', params=embedding_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
+            dict(kind='adamw', params=lm_head_params, lr=lm_head_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=value_embeds_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=resid_params, lr=scalar_lr * 0.01, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind='adamw', params=x0_params, lr=scalar_lr, betas=(0.96, 0.95), eps=1e-10, weight_decay=0.0),  # higher beta1 for x0
         ]
+        param_groups = [group for group in param_groups if len(group["params"]) > 0]
         # Muon groups (matrix params, grouped by shape for stacking)
         for shape in sorted({p.shape for p in matrix_params}):
             group_params = [p for p in matrix_params if p.shape == shape]
