@@ -324,10 +324,12 @@ Rescale rotary frequencies using NTK-aware interpolation with a ramp function. O
 Recovers $>$99\% of performance at $8\times$ context extension. Near-zero architectural overhead \cite{peng2023yarn}. \\
 \midrule
 
-Global Tokens with Sliding-Window Attention &
-Pure sliding-window attention cannot propagate information beyond the window, harming tasks requiring long-range dependencies. &
-Prepend $G$ learned global tokens per layer. Local tokens attend locally + to all global tokens. Global tokens attend to the full sequence. Modify attention mask accordingly. &
-Improved long-range coherence and summarisation. $O(n \cdot w + G \cdot n)$ complexity vs.\ $O(n^2)$ for full attention \cite{beltagy2020longformer, zaheer2020bigbird}. \\
+Tie Token Embedding and LM Head Weights &
+Modern LLMs typically share the parameters of the input token embedding and output language-model head. This reduces parameter count and improves statistical efficiency by constraining both representations to the same token space. &
+Let $E \in \mathbb{R}^{V \times d_\mathrm{model}}$ denote the token embedding matrix. Input embeddings use $xE$, while the LM head reuses the same matrix for prediction:
+$\text{logits} = hE^\top$.
+This ties the input embedding and output projection weights while retaining a separate output bias if desired. &
+Reduces parameters by $\sim V \cdot d_\mathrm{model}$ and slightly improves perplexity in practice. Standard in GPT-style and many modern LLM architectures \cite{press2017using, inan2017tying}. \\
 \bottomrule
 \caption{Proposed architectural improvements to the Feb 2026 \texttt{nanochat}.}
 \label{tab:proposed_changes}\\
@@ -725,6 +727,14 @@ context extension scenario and can be combined with YaRN
   rapid decrease.}
 \label{fig:train_loss}
 \end{figure}
+
+\section{\texttt{nanochat} Fork}
+
+The source code for our fork of \texttt{nanochat} is available on GitHub. You can find all the files mentioned in our report there. The link is below:
+
+\bluehref{https://github.com/merrickliu888/nanochat}{https://github.com/merrickliu888/nanochat}
+
+\newpage
 
 \begin{thebibliography}{9}
 \bibitem{radford2019language} Radford, A., et al. (2019). Language models are unsupervised multitask learners. OpenAI Blog.
