@@ -831,21 +831,21 @@ To qualitatively evaluate this effect, we constructed a set of questions that th
 \# & Question \\
 \hline
 1 & What is the most common element in the universe? \\
-2 & Is the sky blue? (yes or no) \\
-3 & Is Antarctica a continent? (yes or no) \\
-4 & Is China in Asia? (yes or no) \\
+2 & What is a water molecule made of? \\
+3 & Who was the first president of the United States? \\
+4 & What is the tallest mountain on Earth? \\
 5 & Who discovered special relativity? \\
-6 & What is Newton's First Law? \\
-7 & Is football a sport? \\
-8 & What planet is closest to the Sun? \\
-9 & Is chocolate sweet? \\
-10 & True or False: The Earth is round. \\
+6 & What is the longest bone in the body? \\
+7 & Which side of the heart is bigger? \\
+8 & What planet is the closest to the sun? \\
+9 & What is sushi made of? \\
+10 & True or False, the Earth is round: \\
 \hline
 \end{tabular}
 \end{center}
 
-In preliminary testing, picochat typically produces incoherent or memorized responses for these tasks, while the larger \texttt{nanochat} model can generate coherent and correct answers. This qualitative difference illustrates how increasing model scale improves both knowledge representation and reasoning ability. Additionally it has stronger general knowledge of the world due to
-the larger training dataset and an increased ability to perform tasks like instruction following and question and answering.
+In preliminary testing, picochat typically produces incoherent or memorized responses for these tasks, while the larger \texttt{nanochat} model is more readily abot to generate coherent and correct answers. This qualitative difference illustrates how increasing model scale improves both knowledge representation and reasoning ability. Additionally it has stronger general knowledge of the world due to
+the larger training dataset and an increased ability to perform tasks like instruction following and question and answering despite those not explicitly being trained for in the pretraining stage. Sample model answers from both picochat and nanochat are in Appendix ~\ref{sec:answers}.
 
 \newpage
 
@@ -866,6 +866,113 @@ the larger training dataset and an increased ability to perform tasks like instr
 \caption{Training loss curve for our final nanochat model. The two red points at the bottom right give us the model's lowest and final validation loss values.}
 \label{fig:train_loss}
 \end{figure}
+
+\section{Answers to Questions}
+\label{sec:answers}
+
+\subsection{Picochat}
+
+\begin{enumerate}
+
+\item \textbf{What is the most common element in the universe?} \\
+The most common element in the universe is the element of the universe. \\
+Answer: The most common element in the universe is the element of the universe. \\
+Answer: The most common element in the universe is the element of the universe. \ldots
+
+\item \textbf{What is a water molecule made of?} \\
+A water molecule is a molecule that is made up of two or more molecules. The water molecule is a molecule that is made up of two or more molecules. The water molecule is a molecule that is made up of two or more molecules. The water molecule is a molecule that is made up of two or more molecules.
+
+\item \textbf{Who was the first president of the United States?} \\
+The United States is the first president of the United States. \\
+Answer: The United States is the first president of the United States. \\
+Answer: The United States is the first president of the United States. \ldots
+
+\item \textbf{What is the tallest mountain on Earth?} \\
+4. What is the tallest mountain on Earth? \\
+Answer: 4. What is the tallest mountain on Earth? \\
+Answer: 4. What is the tallest mountain on Earth? \ldots
+
+\item \textbf{Who discovered special relativity?} \\
+Answer: \\
+Answer: \\
+Answer: \ldots
+
+\item \textbf{What is the longest bone in the body?} \\
+6. What is the longest bone in the body? \\
+Answer: 6. What is the longest bone in the body? \\
+Answer: 6. What is the longest bone in the body? \ldots
+
+\item \textbf{Which side of the heart is bigger?} \\
+The heart is bigger than the heart. \\
+Answer: The heart is bigger than the heart. \\
+Answer: The heart is bigger than the heart. \ldots
+
+\item \textbf{What planet is the closest to the sun?} \\
+The sun is the closest to the sun. \\
+Answer: The closest to the sun. \\
+Answer: The closest to the sun. \ldots
+
+\item \textbf{What is sushi made of?} \\
+sushi is made of sushi made of sushi rice, rice, and other ingredients. It is made of sushi rice, rice, and other ingredients. It is made of sushi rice, rice, and other ingredients. It is made of sushi rice, rice, and other ingredients. It is made of sushi rice, rice \ldots
+
+\item \textbf{True or False, the Earth is round:} \\
+Answer: \\
+Answer: \\
+Answer: \ldots
+
+\end{enumerate}
+
+\subsection{Nanochat}
+\begin{enumerate}
+
+\item \textbf{What is the most common element in the universe?} \\
+The most common element in the universe is hydrogen. \\
+Answer: Hydrogen is the most common element in the universe. \\
+Answer: Hydrogen is the most common element in the universe. \\
+Answer: Hydrogen is the most common element in the universe. \ldots
+
+\item \textbf{What is a water molecule made of?} \\
+A water molecule is a molecule that is made up of two hydrogen atoms and one oxygen atom. It is a molecule that is made up of two hydrogen atoms and one oxygen atom. The hydrogen atoms are bonded together in a molecule called a water molecule. The oxygen atoms are bonded together in a molecule called a water molecule.
+
+\item \textbf{Who was the first president of the United States?} \\
+The first president of the United States was George Washington. \\
+Answer: The first president of the United States was George Washington. \\
+Answer: The first president of the United States was George Washington. \\
+Answer: The first president of the United States was George Washington. \ldots
+
+\item \textbf{What is the tallest mountain on Earth?} \\
+The tallest mountain on Earth is the Mount Everest, which is 4,000 feet tall. \\
+Answer: The tallest mountain on Earth is the Mount Everest, which is 4,000 feet tall. \ldots
+
+\item \textbf{Who discovered special relativity?} \\
+The first person to discover special relativity was Albert Einstein. He was the first person to discover the laws of physics. He was also the first person to discover the laws of gravity. He was also the first person to discover the laws of quantum mechanics. He was also the first person to discover the laws of quantum mechanics.
+
+\item \textbf{What is the longest bone in the body?} \\
+The femur. \\
+Answer: The femur is the longest bone in the body. \\
+Answer: The femur is the longest bone in the body. \\
+Answer: The femur is the longest bone in the body. \ldots
+
+\item \textbf{Which side of the heart is bigger?} \\
+The left side of the heart is bigger than the right side. \\
+Answer: The right side of the heart is bigger than the left side. \\
+Answer: The left side of the heart is bigger than the right side. \\
+Answer: The left side of the heart is bigger than the right side.
+
+\item \textbf{What planet is the closest to the sun?} \\
+The closest planet to the sun is Mercury. \\
+Answer: The closest planet to the sun is Venus. \\
+Answer: The closest planet to the sun is Earth. \\
+Answer: The closest planet to the sun is Mars. \\
+Answer: The closest planet to the sun is Jupiter. \ldots
+
+\item \textbf{What is sushi made of?} \\
+Sushi is a type of sushi that is made from rice, fish, and other ingredients. It is typically made with rice, fish, and other ingredients, and is often served with a variety of toppings, such as wasabi, soy sauce, and wasabi. Sushi is often served with a variety of toppings \ldots
+
+\item \textbf{True or False, the Earth is round:} \\
+Explanation: The Earth is round because the distance between the Sun and the Moon is 10.5 billion kilometers. The Earth is round because the distance between the Sun and the Moon is 10.5 billion kilometers. The Earth is round because the distance between the Sun and the Moon is 10.5 \ldots
+
+\end{enumerate}
 
 \section{\texttt{nanochat} Fork}
 
