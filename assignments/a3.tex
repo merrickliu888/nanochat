@@ -686,7 +686,7 @@ relative) is negligible compared to the long-context gains. \\
 Interestingly, even Phase~1 (trained only at 512) shows improving BPB at
 longer evaluation lengths (1.0587 $\rightarrow$ 1.0296 $\rightarrow$ 1.0204).
 This is because longer sequences provide more conditioning context per token,
-making predictions easier — not because the model has learned to handle
+making predictions easier not because the model has learned to handle
 positions beyond 512.  Phase~2 amplifies this effect by having been explicitly
 trained on the full 2048-token range.
 
@@ -695,7 +695,7 @@ Neither model succeeds at passkey retrieval (0\% accuracy across all positions).
 This is unsurprising: passkey retrieval requires the model to (a) identify
 a specific fact in a sea of filler text, (b) store it precisely in its
 representations, and (c) recall it verbatim on demand.  These capabilities
-emerge only at much larger model scales — prior work shows that models below
+emerge only at much larger model scales prior work shows that models below
 $\sim$1B parameters typically fail at needle-in-a-haystack tasks
 \cite{roziere2023codellama}.  At 30M parameters, our picochat lacks the
 representational capacity for precise information retrieval regardless of
@@ -713,7 +713,139 @@ context extension scenario and can be combined with YaRN
 
 \newpage
 
-\section{Our Final \texttt{\texttt{nanochat}}}
+\section{Our Final \texttt{nanochat}}
+
+\subsection{Final Model Configuration}
+
+The final \texttt{nanochat} model incorporates all architectural improvements proposed in Section 1. These changes are motivated by modern large language model design and were validated through the picochat ablation experiments. The final architecture uses Rotary Positional Embeddings (RoPE), Grouped Query Attention (GQA), RMSNorm, SwiGLU feedforward layers, tied token embeddings, FlashAttention, and sliding-window attention.
+
+The final model contains \textbf{896,510,120 parameters}. The configuration is summarized below:
+
+\begin{center}
+\begin{tabular}{ll}
+\hline
+Parameter & Value \\
+\hline
+Total parameters & 896,510,120 \\
+Positional encoding & RoPE (+ YaRN scaling) \\
+Attention type & Grouped Query Attention \\
+Normalization & RMSNorm \\
+Feedforward & SwiGLU \\
+Attention kernel & FlashAttention \\
+Attention pattern & Sliding window \\
+Embeddings & Tied token embedding and LM head \\
+\hline
+\end{tabular}
+\end{center}
+
+These architectural choices follow widely adopted practices in modern LLMs such as LLaMA and Mistral, which use gated feedforward networks, RoPE positional encodings, and efficient attention mechanisms.
+
+\subsection{Scaling Law Prediction}
+
+Before running the large training job, we estimate the expected performance of \texttt{nanochat} using established language model scaling laws. Empirical studies have shown that language modeling loss follows a power-law relationship with model size \cite{kaplan2020scaling}. The relationship can be expressed as:
+
+\[
+L(N) = L_{\infty} + aN^{-\alpha}
+\]
+
+where \(N\) is the number of parameters and \(\alpha\) is typically between \(0.05\) and \(0.1\).
+
+Our picochat model contains approximately \(3\times10^7\) parameters and achieves a validation BPB of \(1.0543\). The final \texttt{nanochat} model contains \(8.97\times10^8\) parameters, corresponding to a scale increase of approximately \(30\times\).
+
+Assuming a typical scaling exponent of \(\alpha \approx 0.07\), the expected loss reduction factor is
+
+\[
+\left(\frac{N_{nano}}{N_{pico}}\right)^{-\alpha}
+\approx (30)^{-0.07} \approx 0.79 .
+\]
+
+Applying this scaling relationship yields a predicted BPB of approximately
+
+\[
+\text{BPB}_{nano} \approx 1.0543 \times 0.79 \approx 0.83 .
+\]
+
+This prediction provides a theoretical estimate of the expected improvement before training the larger model. More recent work suggests that optimal scaling also depends on the ratio between parameters and training tokens \cite{hoffmann2022training}, but the parameter-based scaling provides a reasonable first-order estimate.
+
+\subsection{Results}
+
+After training the final model on the full pre-training dataset, we compare the predicted scaling-law estimate with the observed performance.
+
+\begin{center}
+\begin{tabular}{lccc}
+\hline
+Model & Parameters & Val BPB & Notes \\
+\hline
+picochat & $\sim$30M & 1.05430 & baseline ablation model \\
+nanochat (predicted) & 896M & 0.832897 & scaling-law estimate \\
+nanochat (actual) & 896M & 0.854689 & full pre-training run \\
+\hline
+\end{tabular}
+\end{center}
+
+The results demonstrate how well the empirical scaling-law prediction matches the observed performance of the larger model. Deviations from the predicted value can occur due to differences in training data, architectural improvements, and optimization dynamics. Additionally, \autoref{tab:nanochat_eval} lists each of the CORE evaluation metrics that were performed after pre-training as provided in the nanochat repository. The overall CORE metric score achieved was 0.1378.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{l l l c c}
+\hline
+Benchmark & Shots & Task Type & Accuracy & Centered Acc. \\
+\hline
+hellaswag\_zeroshot & 0 & multiple choice & 0.3760 & 0.1680 \\
+jeopardy & 10 & language modeling & 0.0000 & 0.0000 \\
+bigbench\_qa\_wikidata & 10 & language modeling & 0.2240 & 0.2240 \\
+arc\_easy & 10 & multiple choice & 0.5860 & 0.4480 \\
+arc\_challenge & 10 & multiple choice & 0.2860 & 0.0480 \\
+copa & 0 & multiple choice & 0.5900 & 0.1800 \\
+commonsense\_qa & 10 & multiple choice & 0.2860 & 0.1075 \\
+piqa & 10 & multiple choice & 0.7020 & 0.4040 \\
+openbook\_qa & 0 & multiple choice & 0.3140 & 0.0853 \\
+lambada\_openai & 0 & language modeling & 0.2520 & 0.2520 \\
+hellaswag & 10 & multiple choice & 0.3800 & 0.1733 \\
+winograd & 0 & schema & 0.5458 & 0.0916 \\
+winogrande & 0 & schema & 0.5260 & 0.0520 \\
+bigbench\_dyck\_languages & 10 & language modeling & 0.0520 & 0.0520 \\
+agi\_eval\_lsat\_ar & 3 & multiple choice & 0.2957 & 0.1196 \\
+bigbench\_cs\_algorithms & 10 & language modeling & 0.4480 & 0.4480 \\
+bigbench\_operators & 10 & language modeling & 0.0714 & 0.0714 \\
+bigbench\_repeat\_copy\_logic & 10 & language modeling & 0.0312 & 0.0312 \\
+squad & 10 & language modeling & 0.0600 & 0.0600 \\
+coqa & 0 & language modeling & 0.1660 & 0.1660 \\
+boolq & 10 & multiple choice & 0.5180 & -0.2684 \\
+bigbench\_language\_identification & 10 & multiple choice & 0.2700 & 0.1969 \\
+\hline
+\end{tabular}
+\caption{Post-pretraining evaluation results for the final \texttt{nanochat} model across a range of reasoning, commonsense, and language modeling benchmarks.}
+\label{tab:nanochat_eval}
+\end{table}
+
+\subsection{Emergent Abilities}
+
+As model scale increases, language models often exhibit new capabilities that are not present in smaller models. These so-called \emph{emergent abilities} arise when the model has sufficient capacity to represent more complex patterns and reasoning processes.
+
+To qualitatively evaluate this effect, we constructed a set of questions that the \texttt{nanochat} model can answer correctly but the picochat model cannot.
+
+\begin{center}
+\begin{tabular}{lp{7cm}}
+\hline
+\# & Question \\
+\hline
+1 & What is the most common element in the universe? \\
+2 & Is the sky blue? (yes or no) \\
+3 & Is Antarctica a continent? (yes or no) \\
+4 & Is China in Asia? (yes or no) \\
+5 & Who discovered special relativity? \\
+6 & What is Newton's First Law? \\
+7 & Is football a sport? \\
+8 & What planet is closest to the Sun? \\
+9 & Is chocolate sweet? \\
+10 & True or False: The Earth is round. \\
+\hline
+\end{tabular}
+\end{center}
+
+In preliminary testing, picochat typically produces incoherent or memorized responses for these tasks, while the larger \texttt{nanochat} model can generate coherent and correct answers. This qualitative difference illustrates how increasing model scale improves both knowledge representation and reasoning ability. Additionally it has stronger general knowledge of the world due to
+the larger training dataset and an increased ability to perform tasks like instruction following and question and answering.
 
 \newpage
 
@@ -725,6 +857,13 @@ context extension scenario and can be combined with YaRN
 \caption{Training loss curves for pico-baseline, pico-swiglu, and pico-yarn over
   5000 steps.  All three runs converge to similar loss values after the initial
   rapid decrease.}
+\label{fig:train_loss}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{a3/images/pretrain_loss_curve.png}
+\caption{Training loss curve for our final nanochat model. The two red points at the bottom right give us the model's lowest and final validation loss values.}
 \label{fig:train_loss}
 \end{figure}
 
@@ -749,5 +888,14 @@ The source code for our fork of \texttt{nanochat} is available on GitHub. You ca
 \bibitem{zaheer2020bigbird} Zaheer, M., et al. (2020). Big Bird: Transformers for longer sequences. \textit{NeurIPS}.
 \bibitem{roziere2023codellama} Rozi\`{e}re, B., et al. (2023). Code Llama: Open foundation models for code. \textit{arXiv:2308.12950}.
 \bibitem{ding2024longrope} Ding, Y., et al. (2024). LongRoPE: Extending LLM context window beyond 2 million tokens. \textit{arXiv:2402.13753}.
+\bibitem{kaplan2020scaling}
+Kaplan, J., McCandlish, S., Henighan, T., Brown, T., Chess, B., Child, R., Gray, S., Radford, A., Wu, J., \& Amodei, D. (2020). 
+Scaling laws for neural language models. 
+\textit{arXiv:2001.08361}.
+
+\bibitem{hoffmann2022training}
+Hoffmann, J., Borgeaud, S., Mensch, A., Buchatskaya, E., Cai, T., Rutherford, E., de Las Casas, D., Hendricks, L., Welbl, J., Clark, A., et al. (2022). 
+Training compute-optimal large language models. 
+\textit{arXiv:2203.15556}.
 \end{thebibliography}
 \end{document}
