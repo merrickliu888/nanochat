@@ -1,12 +1,13 @@
 """
 Unified evaluation script for base models.
 
-Supports three evaluation modes (comma-separated):
+Supports four evaluation modes (comma-separated):
   --eval core    : CORE metric (accuracy on ICL tasks)
   --eval bpb     : Bits per byte on train/val splits
   --eval sample  : Generate samples from the model
+  --eval qa10    : Ask a fixed 10-question evaluation set
 
-Default is all three: --eval core,bpb,sample
+Default is core,bpb,sample.
 
 Examples:
 
@@ -172,24 +173,64 @@ def evaluate_core(model, tokenizer, device, max_per_task=-1):
     }
     return out
 
+
+def evaluate_qa10(model, tokenizer, max_tokens=64):
+    """
+    Ask a fixed 10-item question set and return generated answers.
+    """
+    questions = [
+        (1, "What is the most common element in the universe?"), 
+        (2, "I the sky blue, yes or no?"),
+        (3, "Is Antarctica a continent yesr or no?"),
+        (4, "Is China in Asia yes or no?"),
+        (5, "Who discovered special relativity?"),
+        (6, "What is Newton's First Law?"),
+        (7, "Is football a sport?"),
+        (8, "What planet is the closest to the sun?"),
+        (9, "Is chocolate sweet?"),
+        (10, "True or False, the Earth is round:"),
+    ]
+    engine = Engine(model, tokenizer)
+    output = []
+    for idx, question in questions:
+        prompt = f"{idx}. {question}\\nAnswer:"
+        tokens = tokenizer(prompt, prepend="<|bos|>")
+        samples, _ = engine.generate_batch(
+            tokens,
+            num_samples=1,
+            max_tokens=max_tokens,
+            temperature=0.0,
+            top_k=None,
+        )
+        answer_tokens = samples[0][len(tokens):]
+        answer = tokenizer.decode(answer_tokens).strip()
+        output.append({
+            "id": idx,
+            "question": question,
+            "answer": answer,
+            "prompt": prompt,
+        })
+    return output
+
 # -----------------------------------------------------------------------------
 # Main
 
 def main():
     parser = argparse.ArgumentParser(description="Base model evaluation")
-    parser.add_argument('--eval', type=str, default='core,bpb,sample', help='Comma-separated evaluations to run: core,bpb,sample (default: all)')
+    parser.add_argument('--eval', type=str, default='core,bpb,sample', help='Comma-separated evaluations to run: core,bpb,sample,qa10 (default: core,bpb,sample)')
     parser.add_argument('--hf-path', type=str, default=None, help='HuggingFace model path (e.g. openai-community/gpt2-xl)')
     parser.add_argument('--model-tag', type=str, default=None, help='nanochat model tag to identify the checkpoint directory')
     parser.add_argument('--step', type=int, default=None, help='Model step to load (default = last)')
     parser.add_argument('--max-per-task', type=int, default=-1, help='Max examples per CORE task (-1 = all)')
     parser.add_argument('--device-batch-size', type=int, default=32, help='Per-device batch size for BPB evaluation')
     parser.add_argument('--split-tokens', type=int, default=40*524288, help='Number of tokens to evaluate per split for BPB')
+    parser.add_argument('--qa-max-tokens', type=int, default=64, help='Max tokens generated per fixed QA question')
     parser.add_argument('--device-type', type=str, default='', help='cuda|cpu|mps (empty = autodetect)')
     args = parser.parse_args()
 
     # Parse evaluation modes
     eval_modes = set(mode.strip() for mode in args.eval.split(','))
-    valid_modes = {'core', 'bpb', 'sample'}
+    valid_modes = {'core', 'bpb', 'sample', 'qa10'}
     invalid = eval_modes - valid_modes
     if invalid:
         parser.error(f"Invalid eval modes: {invalid}. Valid: {valid_modes}")
@@ -218,6 +259,7 @@ def main():
     # Results to log
     core_results = None
     bpb_results = {}
+    qa10_results = []
     samples = []
     unconditioned_samples = []
 
@@ -256,6 +298,19 @@ def main():
                 unconditioned_samples.append(sample_str)
     elif 'sample' in eval_modes and is_hf_model:
         print0("\nSkipping sampling for HuggingFace models (not supported)")
+
+    # --- QA10 evaluation ---
+    if 'qa10' in eval_modes and not is_hf_model:
+        if ddp_rank == 0:
+            print0("\n" + "="*80)
+            print0("10-Question QA Evaluation")
+            print0("="*80)
+            qa10_results = evaluate_qa10(model, tokenizer, max_tokens=args.qa_max_tokens)
+            for item in qa10_results:
+                print0(f"{item['id']:>2}. {item['question']}")
+                print0(f"   {item['answer'] if item['answer'] else '[no output]'}")
+    elif 'qa10' in eval_modes and is_hf_model:
+        print0("\nSkipping 10-question QA for HuggingFace models (not supported)")
 
     # --- BPB evaluation ---
     if 'bpb' in eval_modes:
@@ -313,6 +368,8 @@ def main():
         report_data.append({f"sample {i}": s for i, s in enumerate(samples)})
     if unconditioned_samples:
         report_data.append({f"unconditioned {i}": s for i, s in enumerate(unconditioned_samples)})
+    if qa10_results:
+        report_data.append({"qa10_results": qa10_results})
 
     get_report().log(section="Base model evaluation", data=report_data)
 

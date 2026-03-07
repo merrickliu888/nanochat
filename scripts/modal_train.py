@@ -9,6 +9,7 @@ Individual stages (if you want to re-run one step):
     modal run nanochat_modal.py::stage_tokenizer
     modal run nanochat_modal.py::stage_pretrain
     modal run nanochat_modal.py::stage_post_pretrain_eval
+    modal run nanochat_modal.py::stage_base_eval_qa10
     modal run nanochat_modal.py::stage_sft
     modal run nanochat_modal.py::stage_rl          # optional
     modal run nanochat_modal.py::stage_chat_sample
@@ -378,6 +379,11 @@ def stage_pretrain(
             f"--device-batch-size={device_batch_size}",
             f"--run={wandb_run}",
             "--save-every=1000",    # checkpoint every 1k steps for resilience
+
+            # New architectural changes
+            "--mlp-type=swiglu",
+            "--yarn-alpha=4.0",
+            "--tie-embeddings" 
         ],
         nproc=_N_PRETRAIN_GPUS,
     )
@@ -431,8 +437,8 @@ def stage_post_pretrain_eval() -> None:
         volume.commit()
 
     # speedrun.sh: torchrun ... -m scripts.base_loss
-    print("Computing bits-per-byte on train/val data...")
-    _torchrun("scripts.base_loss", nproc=_N_PRETRAIN_GPUS)
+    #print("Computing bits-per-byte on train/val data...")
+    #_torchrun("scripts.base_loss", nproc=_N_PRETRAIN_GPUS)
 
     # speedrun.sh: torchrun ... -m scripts.base_eval
     print("Running CORE evaluation (22 benchmarks, ~20-40 min)...")
@@ -440,6 +446,36 @@ def stage_post_pretrain_eval() -> None:
 
     volume.commit()
     print("Post-pretrain eval complete.")
+
+
+@app.function(
+    image=image,
+    secrets=[secret],
+    volumes={VOLUME_MOUNT: volume},
+    gpu="A10G:1",
+    timeout=60 * 60,
+)
+def stage_base_eval_qa10(
+    model_tag: str = "",
+    step: int | None = None,
+    qa_max_tokens: int = 64,
+) -> None:
+    """
+    Run fixed 10-question QA eval on a base checkpoint.
+
+    Invoke with:
+        modal run scripts.modal_train.py::stage_base_eval_qa10
+        modal run scripts.modal_train.py::stage_base_eval_qa10 --param model_tag=d24
+        modal run scripts.modal_train.py::stage_base_eval_qa10 --param qa_max_tokens=128
+    """
+    _setup_cache()
+    eval_args = ["--eval", "qa10", "--qa-max-tokens", str(qa_max_tokens)]
+    if model_tag:
+        eval_args.extend(["--model-tag", model_tag])
+    if step is not None:
+        eval_args.extend(["--step", str(step)])
+    _torchrun("scripts.base_eval", eval_args, nproc=1)
+    volume.commit()
 
 
 # =============================================================================
