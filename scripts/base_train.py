@@ -52,6 +52,9 @@ parser.add_argument("--aspect-ratio", type=int, default=64, help="model_dim = de
 parser.add_argument("--head-dim", type=int, default=128, help="target head dimension for attention")
 parser.add_argument("--max-seq-len", type=int, default=2048, help="max context length")
 parser.add_argument("--window-pattern", type=str, default="SSSL", help="sliding window pattern tiled across layers: L=full, S=half context (e.g. 'SSL')")
+parser.add_argument("--mlp-type", type=str, default="relu2", choices=["relu2", "swiglu"], help="MLP activation: relu2 or swiglu")
+parser.add_argument("--tie-embeddings", action=argparse.BooleanOptionalAction, default=True, help="tie input and output embedding weights")
+parser.add_argument("--yarn-alpha", type=float, default=1.0, help="YaRN NTK-aware RoPE scaling (1.0 = disabled, >1 = scaled)")
 # Training horizon (only one used, in order of precedence)
 parser.add_argument("--num-iterations", type=int, default=-1, help="explicit number of optimization steps (-1 = disable)")
 parser.add_argument("--target-flops", type=float, default=-1.0, help="calculate num_iterations to reach target_flops (-1 = disable)")
@@ -70,6 +73,7 @@ parser.add_argument("--warmup-ratio", type=float, default=0.0, help="ratio of it
 parser.add_argument("--warmdown-ratio", type=float, default=0.5, help="ratio of iterations for LR warmdown")
 parser.add_argument("--final-lr-frac", type=float, default=0.0, help="final LR as fraction of initial LR")
 parser.add_argument("--resume-from-step", type=int, default=-1, help="resume training from this step (-1 = disable)")
+parser.add_argument("--init-from", type=str, default=None, help="initialize model weights from a different checkpoint (model-tag or model-tag:step). Only loads weights, not optimizer/dataloader state. Used for context extension.")
 # Evaluation
 parser.add_argument("--eval-every", type=int, default=250, help="evaluate val bpb every N steps (-1 = disable)")
 parser.add_argument("--eval-tokens", type=int, default=80*524288, help="number of tokens to evaluate val loss on")
@@ -139,6 +143,9 @@ def build_model_meta(depth):
         sequence_len=args.max_seq_len, vocab_size=vocab_size,
         n_layer=depth, n_head=num_heads, n_kv_head=num_heads, n_embd=model_dim,
         window_pattern=args.window_pattern,
+        mlp_type=args.mlp_type,
+        tie_embeddings=args.tie_embeddings,
+        yarn_alpha=args.yarn_alpha,
     )
     with torch.device("meta"):
         model_meta = GPT(config)
@@ -162,6 +169,24 @@ if resuming:
     model_data, optimizer_data, meta_data = load_checkpoint(checkpoint_dir, args.resume_from_step, device, load_optimizer=True, rank=ddp_rank)
     model.load_state_dict(model_data, strict=True, assign=True)
     del model_data # free up this memory after the copy
+
+# If --init-from is specified, load ONLY model weights from a different checkpoint
+# Used for context extension: train at seq_len=512, then continue at seq_len=2048
+if args.init_from is not None:
+    assert not resuming, "--init-from and --resume-from-step are mutually exclusive"
+    parts = args.init_from.split(":")
+    init_tag = parts[0]
+    init_step = int(parts[1]) if len(parts) > 1 else None
+    init_checkpoint_dir = os.path.join(base_dir, "base_checkpoints", init_tag)
+    if init_step is None:
+        from nanochat.checkpoint_manager import find_last_step
+        init_step = find_last_step(init_checkpoint_dir)
+    print0(f"Initializing weights from {init_checkpoint_dir} step {init_step}")
+    init_model_data, _, _ = load_checkpoint(init_checkpoint_dir, init_step, device, load_optimizer=False)
+    init_model_data = {k.removeprefix("_orig_mod."): v for k, v in init_model_data.items()}
+    model.load_state_dict(init_model_data, strict=True, assign=True)
+    del init_model_data
+    print0(f"Loaded weights from {init_tag} step {init_step}. Optimizer, LR schedule, dataloader start fresh.")
 
 # -----------------------------------------------------------------------------
 # FP8 training initialization and management (this has to be done before torch.compile)

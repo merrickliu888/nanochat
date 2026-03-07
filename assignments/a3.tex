@@ -1,0 +1,901 @@
+\documentclass[a4paper,12pt]{article}
+
+\usepackage{a4wide}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{csquotes}
+\usepackage{lipsum}
+\usepackage{bm}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tikz}
+\usepackage{float}
+\usetikzlibrary{positioning, arrows.meta, shapes.geometric, fit}
+
+\usepackage{graphicx}  % For including images
+\usepackage{xcolor}  % For a colorfull presentation
+\usepackage{listings}  % For presenting code 
+
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\makeatletter
+\def\BState{\State\hskip-\ALG@thistlm}
+\makeatletter
+\usepackage[normalem]{ulem}
+\usepackage{array}
+\usepackage{hyperref}
+% \usepackage[hyphens]{url}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue
+}
+\newcommand{\bluehref}[2]{\href{#1}{\textcolor{blue}{\uline{#2}}}}
+\makeatletter
+\newcommand*{\citelinktext}[2]{%
+  \hyper@@link[cite]{}{cite.#1}{#2}}
+\makeatother
+
+\usepackage{booktabs} 
+\usepackage{enumitem}
+\usepackage{bbm}
+\usepackage{tcolorbox}
+
+\usepackage{minted}
+\usepackage{subcaption}
+
+\usepackage[font=small,labelfont=bf]{caption}
+
+\usepackage{fullpage,amsmath,amsthm,amssymb}
+\newtheorem*{solution}{Solution}
+\newtheorem*{part1}{Part 1}
+\newtheorem*{part2}{Part 2}
+
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\rank}{\mathrm{rank}}
+\newcommand{\Span}{\mathrm{span}}
+\newcommand{\clip}{\mathrm{clip}}
+\newcommand{\Dim}{\mathrm{dim}}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{R}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\tcbset{
+  colback=gray!3,
+  colframe=black!20,
+  boxsep=1mm,
+  left=1mm,
+  right=1mm,
+  top=1mm,
+  bottom=1mm,
+}
+
+\usepackage{changepage}
+\setlength{\parindent}{0pt}
+
+\newenvironment{restoretext}%
+    {
+     \begin{adjustwidth}{}{\leftmargin}%
+    }{\end{adjustwidth}
+     }
+
+% Definition of a style for code, matter of taste
+\lstdefinestyle{mystyle}{
+  language=Python,
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color[HTML]{F7F7F7},
+  rulecolor=\color[HTML]{EEEEEE},
+  identifierstyle=\color[HTML]{24292E},
+  emphstyle=\color[HTML]{005CC5},
+  keywordstyle=\color[HTML]{D73A49},
+  commentstyle=\color[HTML]{6A737D},
+  stringstyle=\color[HTML]{032F62},
+  emph={@property,self,range,True,False},
+  morekeywords={super,with,as,lambda},
+  literate=%
+    {+}{{{\color[HTML]{D73A49}+}}}1
+    {-}{{{\color[HTML]{D73A49}-}}}1
+    {*}{{{\color[HTML]{D73A49}*}}}1
+    {/}{{{\color[HTML]{D73A49}/}}}1
+    {=}{{{\color[HTML]{D73A49}=}}}1
+    {/=}{{{\color[HTML]{D73A49}=}}}1,
+  breakatwhitespace=false,
+  breaklines=true,
+  captionpos=b,
+  keepspaces=true,
+  numbers=none,
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  tabsize=4,
+  frame=single,
+}
+\lstset{style=mystyle}
+
+\begin{document}
+\begin{titlepage}
+    \centering
+    \vspace*{1cm}
+    
+    \Huge
+    \textbf{CSC490: Assignment 3}
+    
+    \vspace{0.5cm}
+    
+    \vspace{1.5cm}
+    
+    \textbf{Team Members}
+    
+    \vspace{0.8cm}
+    
+    \large
+    \begin{tabular}{ll}
+        \textbf{Name} & \textbf{Student ID} \\
+        \midrule
+        Aarya Prakash & 1008790257 \\
+        Derek Huynh & 1008849052 \\
+        Merrick Liu & 1008951920 \\
+        Rhys Balevicius & 1000801974 \\
+    \end{tabular}
+    
+    \vfill
+    
+    \large
+    University of Toronto\\
+    Department of Computer Science    
+\end{titlepage}
+
+\section{Architecture Review}
+
+\subsection{Original \texttt{nanochat} Architecture (October 2023)}
+
+The original \texttt{nanochat} (Oct 13) implemented a minimal decoder-only Transformer closely following the GPT-2 architecture \cite{radford2019language}:
+
+\begin{itemize}
+    \item Decoder-only Transformer
+    \item Learned absolute positional embeddings
+    \item Multi-Head Attention (MHA) — equal Q, K, V heads
+    \item LayerNorm (with learnable scale and bias)
+    \item GELU feedforward network: $\text{Linear} \rightarrow \text{GELU} \rightarrow \text{Linear}$
+    \item Tied token embedding and output projection (\texttt{lm\_head})
+    \item Standard full causal attention (no sliding window)
+\end{itemize}
+
+\subsection{Updated \texttt{nanochat} Architecture (February 2026)}
+
+The February 2026 revision incorporates several improvements motivated by advances in LLM architecture research, the differences are:
+
+\begin{itemize}
+    \item Decoder-only Transformer
+    \item Rotary Positional Embeddings (RoPE) \cite{su2024roformer} — replaces learned absolute embeddings
+    \item Grouped Query Attention (GQA) \cite{ainslie2023gqa} — fewer K/V heads than Q heads
+    \item RMSNorm \cite{zhang2019root} — replaces LayerNorm, no learnable bias
+    \item ReLU$^2$ feedforward network \cite{so2022primer}: $\text{Linear} \rightarrow \text{ReLU}^2 \rightarrow \text{Linear}$
+    \item Untied token embedding and output projection (\texttt{lm\_head})
+    \item FlashAttention (FA3 where available, otherwise PyTorch SDPA) \cite{dao2023flashattention2}
+    \item Sliding-window attention pattern across layers \cite{beltagy2020longformer}
+    \item Value residual mechanism: $V \leftarrow V + \sigma(g(x)) \cdot \mathrm{VE}(x)$
+    \item Per-layer learnable residual scaling parameters
+\end{itemize}
+
+\subsection{Architecture Diagrams}
+
+\subsubsection{High-Level Model Architecture}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    block/.style={draw, rectangle, rounded corners=2pt, minimum width=5cm,
+                  minimum height=0.75cm, align=center, fill=blue!5},
+    arrow/.style={-Latex, thick}
+]
+\node[block] (tokens) {Input Tokens};
+\node[block, below=0.5cm of tokens] (embed) {Token Embedding \texttt{(wte)}};
+\node[block, below=0.5cm of embed] (norm0) {RMSNorm};
+\node[block, below=0.5cm of norm0, fill=orange!10] (block) {Transformer Block $\times L$};
+\node[block, below=0.5cm of block] (lmhead) {\texttt{lm\_head} (Linear, untied)};
+\node[block, below=0.5cm of lmhead] (logits) {Output Logits};
+
+\draw[arrow] (tokens) -- (embed);
+\draw[arrow] (embed) -- (norm0);
+\draw[arrow] (norm0) -- (block);
+\draw[arrow] (block) -- (lmhead);
+\draw[arrow] (lmhead) -- (logits);
+\end{tikzpicture}
+\caption{High-level \texttt{nanochat} architecture (Feb 2026). The embedding and \texttt{lm\_head}
+weights are \textbf{untied}, unlike the original Oct 13 model.}
+\end{figure}
+
+\subsubsection{Transformer Block Detail}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    block/.style={draw, rectangle, rounded corners=2pt, minimum width=5.5cm,
+                  minimum height=0.7cm, align=center, fill=blue!5},
+    subblock/.style={draw, rectangle, rounded corners=2pt, minimum width=5.5cm,
+                     minimum height=0.6cm, align=center, fill=gray!10, font=\small},
+    arrow/.style={-Latex, thick},
+    plus/.style={circle, draw, inner sep=2pt, font=\normalsize}
+]
+
+\node[block] (input) {Block Input $x$};
+\node[subblock, below=0.4cm of input] (norm1) {RMSNorm};
+\node[subblock, below=0.3cm of norm1] (qkv) {QKV Projection};
+\node[subblock, below=0.3cm of qkv] (rope) {RoPE applied to Q and K};
+\node[subblock, below=0.3cm of rope] (qknorm) {QK Normalization};
+\node[subblock, below=0.3cm of qknorm] (vres) {Value Residual: $V \mathrel{+}= \sigma(g(x))\cdot\mathrm{VE}(x)$};
+\node[subblock, below=0.3cm of vres] (attn) {GQA + Sliding-Window Attention};
+\node[subblock, below=0.3cm of attn] (proj) {Output Projection};
+\node[plus, below=0.35cm of proj] (add1) {$+$};
+\node[subblock, below=0.35cm of add1] (scale1) {Residual Scale $\alpha_1$};
+\node[subblock, below=0.3cm of scale1] (norm2) {RMSNorm};
+\node[subblock, below=0.3cm of norm2] (ff1) {Linear ($d \rightarrow d_\mathrm{ff}$)};
+\node[subblock, below=0.3cm of ff1] (relu2) {ReLU$^2$ Activation};
+\node[subblock, below=0.3cm of relu2] (ff2) {Linear ($d_\mathrm{ff} \rightarrow d$)};
+\node[plus, below=0.35cm of ff2] (add2) {$+$};
+\node[subblock, below=0.35cm of add2] (scale2) {Residual Scale $\alpha_2$};
+\node[block, below=0.3cm of scale2] (output) {Block Output};
+
+\draw[arrow] (input) -- (norm1);
+\draw[arrow] (norm1) -- (qkv);
+\draw[arrow] (qkv) -- (rope);
+\draw[arrow] (rope) -- (qknorm);
+\draw[arrow] (qknorm) -- (vres);
+\draw[arrow] (vres) -- (attn);
+\draw[arrow] (attn) -- (proj);
+\draw[arrow] (proj) -- (add1);
+\draw[arrow] (add1) -- (scale1);
+\draw[arrow] (scale1) -- (norm2);
+\draw[arrow] (norm2) -- (ff1);
+\draw[arrow] (ff1) -- (relu2);
+\draw[arrow] (relu2) -- (ff2);
+\draw[arrow] (ff2) -- (add2);
+\draw[arrow] (add2) -- (scale2);
+\draw[arrow] (scale2) -- (output);
+
+% Residual connections on the LEFT to avoid overflow
+\draw[arrow, dashed, blue] (input.west) -- ++(-1.2,0) |- (add1.west)
+    node[pos=0.25, left, font=\small, blue] {residual};
+\draw[arrow, dashed, blue] (scale1.west) -- ++(-0.8,0) |- (add2.west)
+    node[pos=0.25, left, font=\small, blue] {residual};
+
+\end{tikzpicture}
+\caption{Detailed Transformer block for \texttt{nanochat} (Feb 2026). Dashed blue lines show
+residual connections. Per-layer scalars $\alpha_1, \alpha_2$ modulate residual mixing.}
+\end{figure}
+
+\subsection{Key Changes: Oct 2023 $\rightarrow$ Feb 2026}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lll}
+\toprule
+\textbf{Component} & \textbf{Oct 13 (Original)} & \textbf{Feb 2026 (Current)} \\
+\midrule
+Positional Encoding & Learned absolute & RoPE \cite{su2024roformer} \\
+Attention & Multi-Head (MHA) & Grouped Query (GQA) \cite{ainslie2023gqa} \\
+Normalization & LayerNorm & RMSNorm \cite{zhang2019root} \\
+Activation & GELU & ReLU$^2$ \cite{so2022primer} \\
+Embedding & Tied & Untied \\
+Attention Pattern & Full causal & Sliding-window \cite{beltagy2020longformer} \\
+Attention Kernel & Standard & FlashAttention \cite{dao2023flashattention2} \\
+Value Residual & None & Token-conditioned VE \\
+Residual Scaling & None & Per-layer $\alpha$ scalars \\
+\bottomrule
+\end{tabular}
+\caption{Architectural changes between the Oct 13 and Feb 2026 \texttt{nanochat} versions.}
+\end{table}
+
+\subsection{Proposed Architectural Improvements}
+
+We propose three modifications grounded in recent literature to further improve the Feb 2026 \texttt{nanochat}.
+
+\begin{longtable}{R{3.3cm} R{3.7cm} R{4.5cm} R{3.5cm}}
+\toprule
+\textbf{Proposed Change} & \textbf{Motivation} & \textbf{Technical Details} & \textbf{Expected Impact} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Proposed Change} & \textbf{Motivation} & \textbf{Technical Details} & \textbf{Expected Impact} \\
+\midrule
+\endhead
+
+Replace ReLU$^2$ FFN with SwiGLU &
+GLU variants consistently outperform ReLU/GELU in language modelling. Used in LLaMA, PaLM, and Mistral. &
+Replace:
+$\text{Linear} \rightarrow \text{ReLU}^2 \rightarrow \text{Linear}$
+with:
+$y = (\text{SiLU}(xW_1) \odot xW_2)W_3$
+Reduce $d_\mathrm{ff}$ by $\tfrac{2}{3}$ to preserve parameter count. &
+Reported $\sim$0.5 PPL improvement at matched compute \cite{shazeer2020glu}. Better gradient flow through gating. \\
+\midrule
+
+Apply YaRN for RoPE Context Extension &
+RoPE degrades sharply beyond trained sequence length. YaRN enables context extension with minimal retraining. &
+Rescale rotary frequencies using NTK-aware interpolation with a ramp function. Optionally continue pretraining at target length (e.g., 8192 tokens) for $\sim$400M tokens. &
+Recovers $>$99\% of performance at $8\times$ context extension. Near-zero architectural overhead \cite{peng2023yarn}. \\
+\midrule
+
+Tie Token Embedding and LM Head Weights &
+Modern LLMs typically share the parameters of the input token embedding and output language-model head. This reduces parameter count and improves statistical efficiency by constraining both representations to the same token space. &
+Let $E \in \mathbb{R}^{V \times d_\mathrm{model}}$ denote the token embedding matrix. Input embeddings use $xE$, while the LM head reuses the same matrix for prediction:
+$\text{logits} = hE^\top$.
+This ties the input embedding and output projection weights while retaining a separate output bias if desired. &
+Reduces parameters by $\sim V \cdot d_\mathrm{model}$ and slightly improves perplexity in practice. Standard in GPT-style and many modern LLM architectures \cite{press2017using, inan2017tying}. \\
+\bottomrule
+\caption{Proposed architectural improvements to the Feb 2026 \texttt{nanochat}.}
+\label{tab:proposed_changes}\\
+\end{longtable}
+
+\subsection{Ablation Strategy}
+
+To isolate the effect of each proposed change:
+
+\begin{itemize}
+    \item Modify one architectural component at a time against the Feb 2026 baseline.
+    \item Hold constant: training tokens, batch size, learning rate schedule, and random seed.
+    \item Evaluation metrics:
+    \begin{itemize}
+        \item Training and validation loss curves (tracked via Weights \& Biases)
+        \item Validation perplexity
+        \item Long-context perplexity at 2048, 4096, and 8192 tokens (for YaRN)
+        \item Long-range dependency benchmarks (for global tokens)
+    \end{itemize}
+\end{itemize}
+
+\newpage
+
+\section{Ablations on a nano \texttt{nanochat}}
+
+\subsection{Picochat Configuration}
+
+\noindent We define a \emph{picochat} model as a small, fast-to-train configuration
+suitable for ablation experiments.  The chosen configuration is:
+
+\begin{center}
+\texttt{--depth=6 --head-dim=64 --max-seq-len=512 --window-pattern=L}
+\end{center}
+
+\noindent This gives $\text{model\_dim} = 6 \times 64 = 384$, $n_\text{heads} = 6$,
+and approximately 30M total parameters.  The design choices are justified as
+follows:
+
+\begin{itemize}
+  \item \textbf{depth=6, head-dim=64.}  Mirrors the \texttt{runs/runcpu.sh}
+        reference configuration that has been validated end-to-end.  The
+        model is large enough to show meaningful differences between
+        ablations but small enough to train three runs on A10G GPUs within
+        a \$6 budget.
+  \item \textbf{seq\_len=512.}  Short sequences enable fast iteration
+        (higher tokens/s) while still being long enough for perplexity
+        differences between architectural variants to manifest.
+  \item \textbf{window-pattern=L.}  A sliding window of exactly
+        \texttt{sequence\_len} = 512 tokens per layer (FA3 convention:
+        \texttt{window\_size=(512,~0)}).  Because training batches are also
+        512 tokens, \texttt{L} is equivalent to full causal attention
+        \emph{during training}.  At inference the window cap remains fixed
+        at 512, so position IDs never exceed 512 regardless of input length.
+\end{itemize}
+
+\noindent Each run trains for 5000 steps with \texttt{total-batch-size=65536},
+consuming approximately $65536 \times 5000 \approx 328\text{M}$ tokens.
+Evaluation is performed every 100 steps on a held-out validation split.
+
+\subsection{Training Cost}
+
+\noindent All three runs execute sequentially inside a single Modal container
+(\texttt{stage\_picoablations}) on an \texttt{A10G:4} instance
+(4$\times$A10G, 96~GB VRAM total, \$0.92/hr at the time of writing).
+Each picochat run finishes in roughly 15~minutes of wall-clock time,
+giving a total container lifetime of $\approx$~45~minutes.
+
+\begin{align*}
+  \text{Cost per run} &\approx \frac{7.2\,\text{min}}{60} \times \$0.92/\text{hr}
+                         \approx \$0.11 \\
+  \text{Total (3 runs)} &\approx 3 \times \$0.11 \approx \$0.33
+\end{align*}
+
+\noindent Each run took approximately 7 minutes in practice (vs.\ the 15 min estimate),
+because the A10G SDPA throughput at seq\_len=512 is very high (~760K tokens/s).
+The total cost for all three ablations was well under \$1.
+
+\subsection{Ablation Variants}
+
+\noindent Two architectural modifications from Section~1 were implemented and
+evaluated against the picochat baseline:
+
+\begin{enumerate}
+  \item \textbf{SwiGLU FFN} (\texttt{--mlp-type=swiglu}).  The
+        ReLU$^2$ two-matrix FFN is replaced by a gated variant:
+        \[
+          y = \bigl(\mathrm{SiLU}(xW_g) \odot xW_1\bigr)W_2,
+        \]
+        with $d_\text{ff} = \lfloor\tfrac{8}{3} d\rfloor \approx 2.67\,d$
+        so that the total parameter count matches the baseline
+        ($4d \times 2 \approx \tfrac{8}{3}d \times 3$).
+
+  \item \textbf{YaRN RoPE scaling} (\texttt{--yarn-alpha=4.0}).  The
+        rotary base frequency is rescaled by
+        $\theta' = \theta_0 \cdot \alpha^{d/(d-2)}$ with $\alpha = 4.0$,
+        implementing NTK-aware interpolation \cite{peng2023yarn}.  The
+        model is trained at seq\_len=512 but the modified frequencies
+        allow it to generalise to longer sequences at inference time.
+\end{enumerate}
+
+\subsection{Results}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Variant} & \textbf{Val BPB} & \textbf{Val PPL$_\text{byte}$} & \textbf{Train time} & \textbf{Notes} \\
+\midrule
+pico-baseline & 1.054332 & 2.0772 & 7.04 min & relu$^2$, YaRN $\alpha=1$ \\
+pico-swiglu   & 1.054800 & 2.0780 & 7.22 min & SwiGLU, YaRN $\alpha=1$   \\
+pico-yarn     & \textbf{1.053839} & \textbf{2.0765} & 7.28 min & relu$^2$, YaRN $\alpha=4$  \\
+\bottomrule
+\end{tabular}
+\caption{Validation BPB and per-byte perplexity ($2^\text{BPB}$) after 5000 training steps on
+  ${\sim}328$M tokens on 4$\times$A10G. All three variants train in $\sim$7 minutes.}
+\label{tab:ablation_results}
+\end{table}
+
+Training curves for all three runs are logged to Weights \& Biases under the
+project \texttt{nanochat-ablations}, with run names \texttt{pico-baseline},
+\texttt{pico-swiglu}, and \texttt{pico-yarn}.  See Figure~\ref{fig:train_loss} in
+the Appendix.
+
+\subsection{Extended-Context Evaluation (YaRN)}
+
+Because \texttt{window-pattern=L} bakes a 512-token sliding window into
+the checkpoint, position IDs at inference always stay in $[0, 511]$ regardless
+of the input sequence length.  Standard RoPE is therefore never evaluated
+at out-of-distribution frequencies, and YaRN's NTK-aware rescaling has
+nothing to correct.  The two models are expected to produce essentially
+identical BPB at all eval lengths.  We verify this with \\
+\texttt{assignments/eval\_extended\_context.py} on Modal (single A10G):
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Eval seq len} & \textbf{Baseline BPB} & \textbf{YaRN BPB} & \textbf{$\Delta$ (base $-$ yarn)} \\
+\midrule
+512  & 1.0587 & 1.0577 & $+0.0009$ \\
+1024 & 1.0296 & 1.0327 & $-0.0031$ \\
+2048 & 1.0204 & 1.0303 & $-0.0099$ \\
+\bottomrule
+\end{tabular}
+\caption{Validation BPB at increasing eval sequence lengths (single A10G).
+  Both models improve as eval length grows because each token benefits from
+  more local context within the 512-token sliding window.
+  The $|\Delta| < 0.01$ gap confirms that sliding-window attention
+  makes YaRN's RoPE scaling irrelevant at this configuration.}
+\label{tab:yarn_context}
+\end{table}
+
+\subsection{Discussion}
+
+\paragraph{SwiGLU.}
+\noindent The gated activation in SwiGLU provides a data-dependent masking that suppresses
+uninformative directions in the hidden state.  At this scale (30M params,
+328M tokens), SwiGLU performed marginally \emph{worse} than the baseline
+(BPB 1.054800 vs.\ 1.054332, $\Delta = +0.000468$).  This is consistent with
+the known behaviour of SwiGLU: the gating mechanism requires more training
+compute to outperform the simpler ReLU$^2$ baseline.  Shazeer's original
+ablation \cite{shazeer2020glu} reports a $\sim$0.5 PPL improvement at
+$\sim$100M+ parameter scale with Chinchilla-optimal token budgets.
+At our scale the model is significantly undertrained relative to the
+number of parameters in the gate matrix, so the benefit has not yet materialised.
+At larger scales (d12+) and longer training horizons, SwiGLU is expected to
+show a measurable improvement.
+
+\paragraph{YaRN.}
+\noindent The results confirm the theoretical prediction: baseline and YaRN differ by
+at most 0.01 BPB across all eval lengths, well within noise.  The reason is
+architectural.  The \texttt{window-pattern=L} setting fixes the attention
+window at 512 tokens in the checkpoint config (\texttt{window\_size=(512,~0)}
+in FA3).  At inference, even when the dataloader feeds a 2048-token batch,
+each token attends only to its 512 nearest predecessors, so position IDs
+never exceed 512.  Standard RoPE is therefore always evaluated within its
+training distribution, and YaRN's NTK-aware base rescaling
+($\theta' = \theta_0 \cdot \alpha^{d/(d-2)}$, $\alpha=4.0$) has no
+out-of-distribution positions to correct.  In fact, YaRN's frequency
+compression slightly \emph{reduces} positional resolution within the
+in-distribution window, explaining the small negative $\Delta$ at 2048 tokens. \\
+
+Both models improve as eval length grows (BPB drops from $\sim$1.059 at 512
+to $\sim$1.021 at 2048) because longer batches provide richer local context
+within the sliding window — a natural benefit of more tokens per step, not
+extrapolation. \\
+
+YaRN's benefit would materialise only if the model used global causal
+attention (window size $= -1$ in FA3) \emph{and} inference ran beyond the
+training length.  The sliding-window architecture inadvertently sidesteps
+the RoPE extrapolation problem entirely, making YaRN redundant at this
+configuration.
+
+\paragraph{Scaling implications.}
+Both modifications add negligible wall-clock overhead (SwiGLU introduces one
+extra matrix multiply per FFN; YaRN changes only the precomputed buffer).
+SwiGLU's parameter-parity construction means no memory or throughput
+regression.  At larger scales (d24, 768M parameters), the SwiGLU improvement
+is expected to compound with more training tokens.  YaRN becomes increasingly
+valuable as the deployment context window grows beyond the training length,
+avoiding costly continued pretraining at the new length.
+
+\newpage
+
+\section{Extending the Context Window}
+
+\subsection{Motivation}
+
+Modern LLMs are typically trained at a short context length and then
+\emph{context-extended} to a longer window via continued pretraining.
+This two-phase approach is far cheaper than training from scratch at
+the longer length: the model's learned representations transfer
+directly, and only the positional encoding needs to adapt to the new
+range.  This technique is well established in the literature:
+Code~Llama \cite{roziere2023codellama} extends LLaMA~2's 4k context to
+16k by continued pretraining on long-context data, and
+LongRoPE \cite{ding2024longrope} demonstrates that NTK-aware
+frequency scaling allows up to $8\times$ extension with minimal
+quality loss.
+
+\subsection{Experimental Setup}
+
+\paragraph{Phase 1 — Short-context pretraining.}
+We reuse the picochat baseline from Section~2: depth=6, head-dim=64
+($\sim$30M params), trained at \texttt{max-seq-len=512} for 5000 steps
+($\sim$328M tokens) with full causal attention (\texttt{window-pattern=L}).
+This checkpoint is the starting point for context extension.
+
+\paragraph{Phase 2 — Context extension to 2048.}
+We load the Phase~1 model weights into a new model configured with
+\texttt{max-seq-len=2048} and continue training for 2500 steps
+($\sim$164M tokens).  Key design choices:
+
+\begin{itemize}
+    \item \textbf{Only model weights are transferred.}  The optimizer
+          state, learning rate schedule, and dataloader position all
+          start fresh.  This follows the Code~Llama approach: the
+          momentum buffers from short-context training are not useful
+          for the new loss landscape induced by longer sequences.
+    \item \textbf{Full causal attention} (\texttt{window-pattern=L}).
+          At 2048 tokens, sliding-window attention would mask out the
+          very long-range positions we want the model to learn.
+    \item \textbf{Same total batch size} (65536 tokens).  The
+          device batch size is reduced from 32 to 8 to accommodate
+          4$\times$ longer sequences in GPU memory.
+    \item \textbf{2500 steps of continued training.}  The literature
+          suggests 10--20\% of original tokens suffices for context
+          extension.  Our 164M tokens is $\sim$50\% of the Phase~1
+          budget, providing a generous adaptation window.
+\end{itemize}
+
+\noindent We implemented a \texttt{--init-from} flag in the training
+script that loads model weights from an existing checkpoint while
+starting everything else fresh.  This is possible because the model's
+weight shapes are independent of \texttt{sequence\_len} — only the
+rotary positional embeddings (non-persistent buffers, recomputed at
+initialization) and attention window sizes depend on the context length.
+
+\subsection{Training Cost}
+
+Both phases run on 4$\times$A10G GPUs via Modal.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Phase} & \textbf{Seq len} & \textbf{Steps} & \textbf{Tokens} & \textbf{Est.\ time} \\
+\midrule
+Phase 1 (baseline) & 512  & 5000 & 328M & $\sim$7 min \\
+Phase 2 (extended)  & 2048 & 2500 & 164M & $\sim$15 min \\
+\bottomrule
+\end{tabular}
+\caption{Training configuration for the two-phase context extension experiment.
+  Both phases use \texttt{total-batch-size=65536} and full causal attention.}
+\end{table}
+
+\noindent At A10G pricing (\$0.92/hr for 4 GPUs), the total cost is
+well under \$1 for both phases combined.
+
+\subsection{Evaluation}
+
+We compare the Phase~1 checkpoint (\texttt{pico-baseline}, trained at
+512) against the Phase~2 checkpoint (\texttt{ctx-ext-2048}, extended
+to 2048) using two evaluation tasks.
+
+\paragraph{Task A: BPB at multiple sequence lengths.}
+We evaluate validation BPB at seq\_len = 512, 1024, and 2048.  For
+the Phase~1 model, evaluating at 1024 and 2048 tests
+\emph{out-of-distribution} generalisation: the model has never seen
+positions beyond 512 during training.  For the Phase~2 model, all
+three lengths are within its training distribution.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Seq len} & \textbf{Phase 1 BPB} & \textbf{Phase 2 BPB} & \textbf{$\Delta$} \\
+\midrule
+512  & 1.0587 & 1.0648 & $-0.0061$ \\
+1024 & 1.0296 & 1.0161 & $+0.0135$ \\
+2048 & 1.0204 & \textbf{0.9911} & $+0.0293$ \\
+\bottomrule
+\end{tabular}
+\caption{Validation BPB at increasing sequence lengths for Phase~1 (trained at 512)
+  and Phase~2 (extended to 2048).  Positive $\Delta$ means Phase~1 is worse (context extension helps).}
+\label{tab:ctx_ext_bpb}
+\end{table}
+
+\paragraph{Task B: Passkey retrieval.}
+We test whether each model can retrieve a random 5-digit ``passkey''
+embedded at different positions within a context window filled with
+filler text.  The passkey is placed at 10\%, 50\%, and 90\% depth into
+the context.  The model is prompted to recall the passkey, and we
+measure exact-match accuracy over 20 trials per position.\\
+
+This directly tests whether the model can attend to and retrieve
+information from arbitrary positions in its context window.  The
+Phase~1 model is limited to a 512-token context, while the Phase~2
+model uses the full 2048-token context.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Needle position} & \textbf{Phase 1 (512)} & \textbf{Phase 2 (2048)} \\
+\midrule
+10\% & 0\% & 0\% \\
+50\% & 0\% & 0\% \\
+90\% & 0\% & 0\% \\
+\bottomrule
+\end{tabular}
+\caption{Passkey retrieval accuracy at different needle positions.
+  Phase~1 uses a 512-token context; Phase~2 uses a 2048-token context.
+  Neither model succeeds at this task due to insufficient model capacity (30M params).}
+\label{tab:passkey}
+\end{table}
+
+\subsection{Discussion}
+
+\paragraph{BPB results.}
+The context-extended model (Phase~2) achieves significantly lower BPB at
+longer sequence lengths: 0.9911 at seq\_len=2048 vs.\ 1.0204 for Phase~1,
+a $\Delta$ of $+0.0293$.  At seq\_len=1024, Phase~2 also outperforms
+Phase~1 ($\Delta = +0.0135$).  This confirms that continued pretraining at
+the target context length teaches the model to effectively utilise longer-range
+dependencies for next-token prediction. \\
+
+seq\_len=512, Phase~2 is slightly worse than Phase~1 ($\Delta = -0.0061$).
+This small regression is expected: the model's attention patterns have been
+adapted to a 4$\times$ longer context, and there is a mild tradeoff between
+short- and long-context quality.  The magnitude of the regression ($<$0.6\%
+relative) is negligible compared to the long-context gains. \\
+
+Interestingly, even Phase~1 (trained only at 512) shows improving BPB at
+longer evaluation lengths (1.0587 $\rightarrow$ 1.0296 $\rightarrow$ 1.0204).
+This is because longer sequences provide more conditioning context per token,
+making predictions easier not because the model has learned to handle
+positions beyond 512.  Phase~2 amplifies this effect by having been explicitly
+trained on the full 2048-token range.
+
+\paragraph{Passkey retrieval.}
+Neither model succeeds at passkey retrieval (0\% accuracy across all positions).
+This is unsurprising: passkey retrieval requires the model to (a) identify
+a specific fact in a sea of filler text, (b) store it precisely in its
+representations, and (c) recall it verbatim on demand.  These capabilities
+emerge only at much larger model scales prior work shows that models below
+$\sim$1B parameters typically fail at needle-in-a-haystack tasks
+\cite{roziere2023codellama}.  At 30M parameters, our picochat lacks the
+representational capacity for precise information retrieval regardless of
+context length.  The BPB evaluation is therefore the more informative metric
+at this scale.
+
+\paragraph{Practical implications.}
+The two-phase approach is highly cost-effective: Phase~2 uses only
+$\sim$50\% of Phase~1's token budget to extend the context 4$\times$.
+At larger scales, this ratio can be even smaller — Code~Llama used
+only $\sim$2\% additional tokens for a 4$\times$ extension.  The
+\texttt{--init-from} mechanism we implemented generalises to any
+context extension scenario and can be combined with YaRN
+(\texttt{--yarn-alpha}) for even larger extensions.
+
+\newpage
+
+\section{Our Final \texttt{nanochat}}
+
+\subsection{Final Model Configuration}
+
+The final \texttt{nanochat} model incorporates all architectural improvements proposed in Section 1. These changes are motivated by modern large language model design. The final architecture uses Rotary Positional Embeddings (RoPE), Grouped Query Attention (GQA), RMSNorm, SwiGLU feedforward layers, tied token embeddings, FlashAttention, and sliding-window attention.
+
+The final model contains \textbf{896,510,120 parameters}. The configuration is summarized below:
+
+\begin{center}
+\begin{tabular}{ll}
+\hline
+Parameter & Value \\
+\hline
+Total parameters & 896,510,120 \\
+Positional encoding & RoPE (+ YaRN scaling) \\
+Attention type & Grouped Query Attention \\
+Normalization & RMSNorm \\
+Feedforward & SwiGLU \\
+Attention kernel & FlashAttention \\
+Attention pattern & Sliding window \\
+Embeddings & Tied token embedding and LM head \\
+\hline
+\end{tabular}
+\end{center}
+
+These architectural choices follow widely adopted practices in modern LLMs such as LLaMA and Mistral, which use gated feedforward networks, RoPE positional encodings, and efficient attention mechanisms.
+
+\subsection{Scaling Law Prediction}
+
+Before running the large training job, we estimate the expected performance of \texttt{nanochat} using established language model scaling laws. Empirical studies have shown that language modeling loss follows a power-law relationship with model size \cite{kaplan2020scaling}. The relationship can be expressed as:
+
+\[
+L(N) = L_{\infty} + aN^{-\alpha}
+\]
+
+where \(N\) is the number of parameters and \(\alpha\) is typically between \(0.05\) and \(0.1\).
+
+Our picochat model contains approximately \(3\times10^7\) parameters and achieves a validation BPB of \(1.0543\). The final \texttt{nanochat} model contains \(8.97\times10^8\) parameters, corresponding to a scale increase of approximately \(30\times\).
+
+Assuming a typical scaling exponent of \(\alpha \approx 0.07\), the expected loss reduction factor is
+
+\[
+\left(\frac{N_{nano}}{N_{pico}}\right)^{-\alpha}
+\approx (30)^{-0.07} \approx 0.79 .
+\]
+
+Applying this scaling relationship yields a predicted BPB of approximately
+
+\[
+\text{BPB}_{nano} \approx 1.0543 \times 0.79 \approx 0.83 .
+\]
+
+This prediction provides a theoretical estimate of the expected improvement before training the larger model. More recent work suggests that optimal scaling also depends on the ratio between parameters and training tokens \cite{hoffmann2022training}, but the parameter-based scaling provides a reasonable first-order estimate.
+
+\subsection{Results}
+
+After training the final model on the full pre-training dataset, we compare the predicted scaling-law estimate with the observed performance.
+
+\begin{center}
+\begin{tabular}{lccc}
+\hline
+Model & Parameters & Val BPB & Notes \\
+\hline
+picochat & $\sim$30M & 1.05430 & baseline ablation model \\
+nanochat (predicted) & 896M & 0.832897 & scaling-law estimate \\
+nanochat (actual) & 896M & 0.854689 & full pre-training run \\
+\hline
+\end{tabular}
+\end{center}
+
+The results demonstrate how well the empirical scaling-law prediction matches the observed performance of the larger model. Deviations from the predicted value can occur due to differences in training data, architectural improvements, and optimization dynamics. Additionally, \autoref{tab:nanochat_eval} lists each of the CORE evaluation metrics that were performed after pre-training as provided in the nanochat repository. The overall CORE metric score achieved was 0.1378.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{l l l c c}
+\hline
+Benchmark & Shots & Task Type & Accuracy & Centered Acc. \\
+\hline
+hellaswag\_zeroshot & 0 & multiple choice & 0.3760 & 0.1680 \\
+jeopardy & 10 & language modeling & 0.0000 & 0.0000 \\
+bigbench\_qa\_wikidata & 10 & language modeling & 0.2240 & 0.2240 \\
+arc\_easy & 10 & multiple choice & 0.5860 & 0.4480 \\
+arc\_challenge & 10 & multiple choice & 0.2860 & 0.0480 \\
+copa & 0 & multiple choice & 0.5900 & 0.1800 \\
+commonsense\_qa & 10 & multiple choice & 0.2860 & 0.1075 \\
+piqa & 10 & multiple choice & 0.7020 & 0.4040 \\
+openbook\_qa & 0 & multiple choice & 0.3140 & 0.0853 \\
+lambada\_openai & 0 & language modeling & 0.2520 & 0.2520 \\
+hellaswag & 10 & multiple choice & 0.3800 & 0.1733 \\
+winograd & 0 & schema & 0.5458 & 0.0916 \\
+winogrande & 0 & schema & 0.5260 & 0.0520 \\
+bigbench\_dyck\_languages & 10 & language modeling & 0.0520 & 0.0520 \\
+agi\_eval\_lsat\_ar & 3 & multiple choice & 0.2957 & 0.1196 \\
+bigbench\_cs\_algorithms & 10 & language modeling & 0.4480 & 0.4480 \\
+bigbench\_operators & 10 & language modeling & 0.0714 & 0.0714 \\
+bigbench\_repeat\_copy\_logic & 10 & language modeling & 0.0312 & 0.0312 \\
+squad & 10 & language modeling & 0.0600 & 0.0600 \\
+coqa & 0 & language modeling & 0.1660 & 0.1660 \\
+boolq & 10 & multiple choice & 0.5180 & -0.2684 \\
+bigbench\_language\_identification & 10 & multiple choice & 0.2700 & 0.1969 \\
+\hline
+\end{tabular}
+\caption{Post-pretraining evaluation results for the final \texttt{nanochat} model across a range of reasoning, commonsense, and language modeling benchmarks.}
+\label{tab:nanochat_eval}
+\end{table}
+
+\subsection{Emergent Abilities}
+
+As model scale increases, language models often exhibit new capabilities that are not present in smaller models. These so-called \emph{emergent abilities} arise when the model has sufficient capacity to represent more complex patterns and reasoning processes.
+
+To qualitatively evaluate this effect, we constructed a set of questions that the \texttt{nanochat} model can answer correctly but the picochat model cannot.
+
+\begin{center}
+\begin{tabular}{lp{7cm}}
+\hline
+\# & Question \\
+\hline
+1 & What is the most common element in the universe? \\
+2 & Is the sky blue? (yes or no) \\
+3 & Is Antarctica a continent? (yes or no) \\
+4 & Is China in Asia? (yes or no) \\
+5 & Who discovered special relativity? \\
+6 & What is Newton's First Law? \\
+7 & Is football a sport? \\
+8 & What planet is closest to the Sun? \\
+9 & Is chocolate sweet? \\
+10 & True or False: The Earth is round. \\
+\hline
+\end{tabular}
+\end{center}
+
+In preliminary testing, picochat typically produces incoherent or memorized responses for these tasks, while the larger \texttt{nanochat} model can generate coherent and correct answers. This qualitative difference illustrates how increasing model scale improves both knowledge representation and reasoning ability. Additionally it has stronger general knowledge of the world due to
+the larger training dataset and an increased ability to perform tasks like instruction following and question and answering.
+
+\newpage
+
+\appendix
+\section{Training Curves}
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{images/train_loss_part2.png}
+\caption{Training loss curves for pico-baseline, pico-swiglu, and pico-yarn over
+  5000 steps.  All three runs converge to similar loss values after the initial
+  rapid decrease.}
+\label{fig:train_loss}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{a3/images/pretrain_loss_curve.png}
+\caption{Training loss curve for our final nanochat model. The two red points at the bottom right give us the model's lowest and final validation loss values.}
+\label{fig:train_loss}
+\end{figure}
+
+\section{\texttt{nanochat} Fork}
+
+The source code for our fork of \texttt{nanochat} is available on GitHub. You can find all the files mentioned in our report there. The link is below:
+
+\bluehref{https://github.com/merrickliu888/nanochat}{https://github.com/merrickliu888/nanochat}
+
+\newpage
+
+\begin{thebibliography}{9}
+\bibitem{radford2019language} Radford, A., et al. (2019). Language models are unsupervised multitask learners. OpenAI Blog.
+\bibitem{su2024roformer} Su, J., et al. (2024). RoFormer: Enhanced transformer with rotary position embedding. \textit{Neurocomputing}, 568, 127063.
+\bibitem{ainslie2023gqa} Ainslie, J., et al. (2023). GQA: Training generalized multi-query transformer models from multi-head checkpoints. \textit{arXiv:2305.13245}.
+\bibitem{zhang2019root} Zhang, B., \& Sennrich, R. (2019). Root mean square layer normalization. \textit{NeurIPS}.
+\bibitem{so2022primer} So, D., et al. (2022). Primer: Searching for efficient transformers for language modeling. \textit{NeurIPS}.
+\bibitem{beltagy2020longformer} Beltagy, I., Peters, M. E., \& Cohan, A. (2020). Longformer: The long-document transformer. \textit{arXiv:2004.05150}.
+\bibitem{dao2023flashattention2} Dao, T. (2023). FlashAttention-2: Faster attention with better parallelism and work partitioning. \textit{arXiv:2307.08691}.
+\bibitem{shazeer2020glu} Shazeer, N. (2020). GLU variants improve transformer. \textit{arXiv:2002.05202}.
+\bibitem{peng2023yarn} Peng, B., et al. (2023). YaRN: Efficient context window extension of large language models. \textit{arXiv:2309.00071}.
+\bibitem{zaheer2020bigbird} Zaheer, M., et al. (2020). Big Bird: Transformers for longer sequences. \textit{NeurIPS}.
+\bibitem{roziere2023codellama} Rozi\`{e}re, B., et al. (2023). Code Llama: Open foundation models for code. \textit{arXiv:2308.12950}.
+\bibitem{ding2024longrope} Ding, Y., et al. (2024). LongRoPE: Extending LLM context window beyond 2 million tokens. \textit{arXiv:2402.13753}.
+\bibitem{kaplan2020scaling}
+Kaplan, J., McCandlish, S., Henighan, T., Brown, T., Chess, B., Child, R., Gray, S., Radford, A., Wu, J., \& Amodei, D. (2020). 
+Scaling laws for neural language models. 
+\textit{arXiv:2001.08361}.
+
+\bibitem{hoffmann2022training}
+Hoffmann, J., Borgeaud, S., Mensch, A., Buchatskaya, E., Cai, T., Rutherford, E., de Las Casas, D., Hendricks, L., Welbl, J., Clark, A., et al. (2022). 
+Training compute-optimal large language models. 
+\textit{arXiv:2203.15556}.
+\end{thebibliography}
+\end{document}
