@@ -180,14 +180,14 @@ def evaluate_qa10(model, tokenizer, max_tokens=64):
     """
     questions = [
         (1, "What is the most common element in the universe?"), 
-        (2, "I the sky blue, yes or no?"),
-        (3, "Is Antarctica a continent yesr or no?"),
-        (4, "Is China in Asia yes or no?"),
+        (2, "What is a water molecule made of?"),
+        (3, "Who was the first president of the United States?"),
+        (4, "What is the tallest mountain on Earth?"),
         (5, "Who discovered special relativity?"),
-        (6, "What is Newton's First Law?"),
-        (7, "Is football a sport?"),
+        (6, "What is the longest bone in the body?"),
+        (7, "Which side of the heart is bigger?"),
         (8, "What planet is the closest to the sun?"),
-        (9, "Is chocolate sweet?"),
+        (9, "What is sushi made of?"),
         (10, "True or False, the Earth is round:"),
     ]
     engine = Engine(model, tokenizer)
