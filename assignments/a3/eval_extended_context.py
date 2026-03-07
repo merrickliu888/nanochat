@@ -11,7 +11,7 @@ the effect of *more local context* (each token attends to up to 512 prior
 tokens), not true RoPE extrapolation.
 
 Usage (run from repo root after downloading checkpoints from Modal volume):
-    python assignments/eval_extended_context.py
+    python assignments/a3/eval_extended_context.py
 
 Optional env vars:
     PICO_BASELINE_TAG   checkpoint model-tag for baseline   (default: pico-baseline)

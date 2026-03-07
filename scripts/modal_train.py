@@ -743,13 +743,13 @@ def stage_eval_extended_context() -> None:
     Evaluate pico-baseline vs pico-yarn at seq_len = 512, 1024, 2048.
 
     Checkpoints must already exist on the volume (run stage_picoablations first).
-    Runs assignments/eval_extended_context.py on a single A10G.
+    Runs assignments/a3/eval_extended_context.py on a single A10G.
 
     Invoke with:
         modal run scripts/modal_train.py::stage_eval_extended_context
     """
     _setup_cache()
-    _python("assignments.eval_extended_context")
+    _python("assignments.a3.eval_extended_context")
     """
     Load the 8 seqlen-ablation checkpoints and print a BPB comparison table.
 
@@ -762,7 +762,7 @@ def stage_eval_extended_context() -> None:
     import os as _os
     _os.environ["EXPERIMENT"] = "seqlen"
     _setup_cache()
-    _python("assignments.eval_extended_context")
+    _python("assignments.a3.eval_extended_context")
 
 
 # =============================================================================
@@ -829,7 +829,7 @@ def stage_eval_context_extension() -> None:
         modal run scripts/modal_train.py::stage_eval_context_extension
     """
     _setup_cache()
-    _python("assignments.eval_context_extension")
+    _python("assignments.a3.eval_context_extension")
 
 
 # =============================================================================
